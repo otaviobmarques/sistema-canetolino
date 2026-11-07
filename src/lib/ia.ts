@@ -60,6 +60,11 @@ export const refeicaoPorFoto = async (arquivo: Blob) => {
 export const resumoSemanal = (semana: string, indicadores: Record<string, unknown>) =>
   chamar<{ resumo?: string; bloqueado?: boolean }>({ acao: 'resumo_semanal', semana, indicadores })
 
+export type RegistroAnotado = { tipo: 'dose' | 'peso'; data: string; hora: string; dose: string; local: string; peso_kg: number; obs: string; trecho: string }
+/** Organiza o texto do bloco de notas em doses e pesos com data. Nada é salvo: o app mostra para a pessoa conferir. */
+export const anotacoesPorTexto = (texto: string, hoje: string, inicio?: string) =>
+  chamar<{ registros: RegistroAnotado[] }>({ acao: 'anotacoes', texto, hoje, inicio })
+
 /** Reduz a foto antes do envio (lado maior até 1024 px, JPEG): menos dados e menor custo. */
 export async function reduzirFoto(arquivo: Blob, max = 1024): Promise<{ base64: string; tipo: 'image/jpeg' }> {
   const bmp = await createImageBitmap(arquivo)

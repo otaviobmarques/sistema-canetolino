@@ -3,17 +3,21 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState, ty
 import Icon from './Icon'
 
 /* ============ Toasts ============ */
-type Toast = { id: number; texto: string; tipo?: 'ok' | 'info' }
-const ToastCtx = createContext<(texto: string, tipo?: Toast['tipo']) => void>(() => {})
+export type AcaoToast = { rotulo: string; fn: () => void }
+type Toast = { id: number; texto: string; tipo?: 'ok' | 'info'; acao?: AcaoToast }
+const ToastCtx = createContext<(texto: string, tipo?: Toast['tipo'], acao?: AcaoToast) => void>(() => {})
 export const useToast = () => useContext(ToastCtx)
 
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [lista, setLista] = useState<Toast[]>([])
-  const push = useCallback((texto: string, tipo: Toast['tipo'] = 'ok') => {
+  const fechar = useCallback((id: number) => setLista((l) => l.filter((t) => t.id !== id)), [])
+  // com ação (ex.: Desfazer) o aviso fica mais tempo na tela
+  const push = useCallback((texto: string, tipo: Toast['tipo'] = 'ok', acao?: AcaoToast) => {
     const id = Date.now() + Math.random()
-    setLista((l) => [...l, { id, texto, tipo }])
-    setTimeout(() => setLista((l) => l.filter((t) => t.id !== id)), 2800)
-  }, [])
+    // só a última ação pode ser desfeita: um aviso com "Desfazer" substitui o anterior
+    setLista((l) => [...(acao ? l.filter((t) => !t.acao) : l), { id, texto, tipo, acao }])
+    setTimeout(() => fechar(id), acao ? 7000 : 2800)
+  }, [fechar])
   return (
     <ToastCtx.Provider value={push}>
       {children}
@@ -31,7 +35,19 @@ export function ToastProvider({ children }: { children: ReactNode }) {
               <span style={{ color: 'var(--turquesa)' }}>
                 <Icon name={t.tipo === 'info' ? 'info' : 'check'} size={20} strokeWidth={2.6} />
               </span>
-              {t.texto}
+              <span style={{ flex: 1 }}>{t.texto}</span>
+              {t.acao && (
+                <button
+                  type="button"
+                  className="toast__acao"
+                  onClick={() => {
+                    t.acao!.fn()
+                    fechar(t.id)
+                  }}
+                >
+                  {t.acao.rotulo}
+                </button>
+              )}
             </motion.div>
           ))}
         </AnimatePresence>

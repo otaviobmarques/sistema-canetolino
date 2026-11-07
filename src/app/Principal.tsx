@@ -1,4 +1,5 @@
 import BotaoInstalar from '../components/Instalar'
+import { HistoricoDoses, ModalDose } from './Doses'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
@@ -10,6 +11,8 @@ import { Anel, Interruptor, Modal, soltarConfete, useToast } from '../components
 import {
   aguaDoDia,
   compartilhamentoAtivo,
+  doseAtual,
+  inicioDoTratamento,
   dicaDoDose,
   LOCAIS,
   LOCAL_LONGO,
@@ -28,7 +31,7 @@ import { resumoSemanal } from '../lib/ia'
 import { baixarRelatorio } from '../painel/relatorio'
 import { ativar, desativar, situacao, testar, type SituacaoLembretes } from '../lib/notificacoes'
 import { erroPt, sb } from '../lib/supabase'
-import { dataBR, dataCurta, dataDiaMes, dataHoraBR, DIA_MS, diasEntre, DIAS_LONGOS, inicioDoDia, mesAno, num, saudacaoData, uid } from '../lib/datas'
+import { dataBR, dataDiaMes, dataHoraBR, DIA_MS, diasEntre, DIAS_LONGOS, inicioDoDia, mesAno, mesmoDia, num, saudacaoData, uid } from '../lib/datas'
 
 const cartaoAnim = {
   hidden: { opacity: 0, y: 16 },
@@ -164,9 +167,13 @@ export function Jornada() {
   const sugestao = sugerirLocal(s.aplicacoes)
   const [local, setLocal] = useState<Local>(sugestao)
   const [obs, setObs] = useState('')
+  const [dose, setDose] = useState(() => doseAtual(s))
+  const [outroDia, setOutroDia] = useState(false)
   const [canetaAberta, setCanetaAberta] = useState(false)
   const ordenadas = [...s.aplicacoes].sort((a, b) => +new Date(b.em) - +new Date(a.em))
-  const semanaNum = ordenadas.length ? Math.max(1, Math.ceil((diasEntre(ordenadas[ordenadas.length - 1].em, new Date()) + 1) / 7)) : 1
+  const inicio = inicioDoTratamento(s)
+  const semanaNum = inicio ? Math.max(1, Math.ceil((diasEntre(inicio, new Date()) + 1) / 7)) : 1
+  const aplicouHoje = ordenadas.some((a) => mesmoDia(a.em, new Date()))
   const canetas = s.canetas.reduce((t, c) => t + c.quantidade, 0)
   const validade = s.canetas.map((c) => c.validade).sort()[0]
   const validadeProxima = validade && new Date(validade + '-01').getTime() - Date.now() < 30 * DIA_MS
@@ -174,13 +181,18 @@ export function Jornada() {
   const gasto = s.compras.filter((c) => new Date(c.em).getMonth() === mes.getMonth() && new Date(c.em).getFullYear() === mes.getFullYear()).reduce((t, c) => t + c.valor_centavos, 0)
 
   const registrar = (e: React.MouseEvent) => {
+    const nova = { id: uid(), em: new Date().toISOString(), local, obs: obs.trim() || undefined, dose: dose.trim() || undefined }
+    const antes = { aplicacoes: s.aplicacoes, canetas: s.canetas }
     set((x) => ({
       ...x,
-      aplicacoes: [...x.aplicacoes, { id: uid(), em: new Date().toISOString(), local, obs: obs || undefined }],
+      aplicacoes: [...x.aplicacoes, nova],
       canetas: x.canetas.map((c, i) => (i === 0 && c.quantidade > 0 ? { ...c, quantidade: c.quantidade - 1 } : c)),
     }))
     soltarConfete({ x: e.clientX, y: e.clientY }, 60)
-    toast(`Aplicação registrada: ${LOCAL_LONGO[local]}`)
+    toast(`Aplicação registrada: ${LOCAL_LONGO[local]}`, 'ok', {
+      rotulo: 'Desfazer',
+      fn: () => set((x) => ({ ...x, aplicacoes: x.aplicacoes.filter((a) => a.id !== nova.id), canetas: antes.canetas })),
+    })
     setObs('')
   }
 
@@ -203,30 +215,37 @@ export function Jornada() {
             </button>
           ))}
         </div>
-        <input className="campo" style={{ marginTop: 10, minHeight: 46 }} placeholder="Observação (opcional)" value={obs} onChange={(e) => setObs(e.target.value)} />
+        <div className="duas-col" style={{ marginTop: 10 }}>
+          <input className="campo" style={{ minHeight: 46 }} placeholder="Dose (ex.: 2,5 mg)" maxLength={40} aria-label="Dose" value={dose} onChange={(e) => setDose(e.target.value)} />
+          <input className="campo" style={{ minHeight: 46 }} placeholder="Observação" maxLength={200} aria-label="Observação (opcional)" value={obs} onChange={(e) => setObs(e.target.value)} />
+        </div>
+        {aplicouHoje && <p className="legenda" style={{ marginTop: 8 }}>Você já registrou uma dose hoje. Se foi engano, edite ou exclua no histórico abaixo.</p>}
         <button className="btn btn--primario btn--bloco" style={{ marginTop: 12 }} onClick={registrar}>
-          Registrar aplicação
+          Registrar aplicação de hoje
         </button>
+        <div className="jornada-cards">
+          <button className="btn btn--contorno btn--pequeno" onClick={() => setOutroDia(true)}><Icon name="calendar" size={16} /> Foi em outro dia</button>
+          <Link to="/app/jornada/anteriores" className="btn btn--contorno btn--pequeno"><Icon name="upload" size={16} /> Doses anteriores</Link>
+        </div>
       </Cartao>
 
-      <h2 className="secao-titulo">Últimas aplicações</h2>
+      {s.perfil.jornada === 'em_tratamento' && ordenadas.length <= 1 && (
+        <Link to="/app/jornada/anteriores" className="card card--dica-link">
+          <Mascot expressao="piscando" size={46} flutuar={false} />
+          <span><b>Já anotava suas doses?</b> Traga o histórico do bloco de notas ou do caderno para a sua jornada começar do início real.</span>
+        </Link>
+      )}
+
+      <h2 className="secao-titulo">Histórico de aplicações</h2>
       {ordenadas.length ? (
-        <Cartao i={1} className="card lista">
-          <AnimatePresence initial={false}>
-            {ordenadas.slice(0, 4).map((a) => (
-              <motion.div key={a.id} className="lista__linha" layout initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }}>
-                <span>{dataCurta(a.em)}</span>
-                <span className="legenda" style={{ fontSize: 14.5 }}>{LOCAL_LONGO[a.local]}</span>
-              </motion.div>
-            ))}
-          </AnimatePresence>
-        </Cartao>
+        <HistoricoDoses />
       ) : (
         <div className="vazio">
           <Mascot expressao="piscando" size={70} />
-          <p>Ainda não há aplicações. Quando aplicar, escolha o local acima e toque em “Registrar aplicação”.</p>
+          <p>Ainda não há aplicações. Quando aplicar, escolha o local acima e toque em “Registrar aplicação de hoje”.</p>
         </div>
       )}
+      <ModalDose aberto={outroDia} onFechar={() => setOutroDia(false)} />
 
       <div className="grade-2" style={{ marginTop: 14 }}>
         <Cartao i={2} className="card" role="button" tabIndex={0} onClick={() => setCanetaAberta(true)} style={{ cursor: 'pointer' }}>

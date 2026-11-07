@@ -1,4 +1,6 @@
+import { DosesAnteriores } from './Doses'
 import { AnimatePresence, motion } from 'framer-motion'
+import { useEffect } from 'react'
 import { Link, NavLink, Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import Icon from '../components/Icon'
 import Domma from '../components/Domma'
@@ -16,6 +18,11 @@ const COM_NAV = ['/app/home', '/app/jornada', '/app/radar', '/app/perfil']
 
 export default function AppShell() {
   const loc = useLocation()
+  // trava a rolagem da página enquanto o app está aberto (no celular só o conteúdo da tela rola)
+  useEffect(() => {
+    document.documentElement.classList.add('no-app')
+    return () => document.documentElement.classList.remove('no-app')
+  }, [])
   const { s, sync } = useStore()
   const mostrarNav = COM_NAV.includes(loc.pathname)
 
@@ -81,6 +88,7 @@ export default function AppShell() {
                 <Route path="onboarding/:passo" element={<Onboarding />} />
                 <Route path="home" element={<Protegida><Home /></Protegida>} />
                 <Route path="jornada" element={<Protegida><Jornada /></Protegida>} />
+                <Route path="jornada/anteriores" element={<Protegida><DosesAnteriores /></Protegida>} />
                 <Route path="radar" element={<Protegida><Radar /></Protegida>} />
                 <Route path="perfil" element={<Protegida><Perfil /></Protegida>} />
                 <Route path="perfil/compartilhar" element={<Protegida><Compartilhar /></Protegida>} />

@@ -43,9 +43,9 @@ export async function lerSaude(c: SupabaseClient, uid: string, base: Estado): Pr
     medicamento: m
       ? { id: m.id as string, principio: m.principio_ativo as string, nome_comercial: (m.nome_comercial as string) ?? '', dose_texto: (p?.dose_texto as string) ?? 'conforme sua prescrição', dia_semana: (h?.dia_semana as number) ?? 0, horario: ((h?.horario as string) ?? '08:00').slice(0, 5) }
       : base.medicamento,
-    aplicacoes: apl.map((r) => ({ id: r.id as string, em: iso(r.aplicado_em), local: r.local as Local, obs: (r.observacao as string) ?? undefined })),
+    aplicacoes: apl.map((r) => ({ id: r.id as string, em: iso(r.aplicado_em), local: (r.local as Local) ?? undefined, obs: (r.observacao as string) ?? undefined, dose: (r.dose_texto as string) ?? undefined, retroativo: r.retroativo ? (true as const) : undefined })),
     agua: agua.map((r) => ({ id: r.id as string, ml: r.ml as number, em: iso(r.registrado_em) })),
-    pesos: pesos.map((r) => ({ id: r.id as string, kg: Number(r.peso_kg), em: iso(r.registrado_em) })),
+    pesos: pesos.map((r) => ({ id: r.id as string, kg: Number(r.peso_kg), em: iso(r.registrado_em), retroativo: r.retroativo ? (true as const) : undefined })),
     bemestar: bemestar.map((r) => ({ id: r.id as string, em: iso(r.registrado_em), sono_horas: r.sono_horas == null ? undefined : Number(r.sono_horas), sono_qualidade: (r.sono_qualidade as number) ?? undefined, humor: (r.humor as number) ?? undefined, energia: (r.energia as number) ?? undefined, fome: (r.fome as number) ?? undefined, obs: (r.observacao as string) ?? undefined })),
     medidas: medidas.map((r) => ({ id: r.id as string, tipo: r.tipo as TipoMedida, cm: Number(r.medida_cm), em: iso(r.registrado_em) })),
     sintomas: sint.map((r) => ({ id: r.id as string, em: iso(r.registrado_em), sintomas: r.sintomas as string[], intensidade: r.intensidade as number, obs: (r.observacao as string) ?? undefined, alerta: !!r.alerta_disparado })),
@@ -90,6 +90,8 @@ export async function carregar(c: SupabaseClient, uid: string, base: Estado): Pr
       meta_agua_ml: (pr.meta_agua_ml as number) ?? 2000,
       preferencias: (pr.preferencias as string[]) ?? [],
       plano: (pr.plano as 'basico' | 'premium') ?? 'basico',
+      jornada: ((pr.jornada as string) ?? '') as Estado['perfil']['jornada'],
+      inicio_tratamento: (pr.inicio_tratamento as string) ?? '',
     },
     config: { ...base.config, ...((pr.config as object) ?? {}) },
     alimentosRotulo: rotulo.map((r) => ({ id: r.id as string, nome: r.nome as string, porcao_g: Number(r.porcao_g), porcao_texto: (r.porcao_texto as string) ?? undefined, proteina_g: Number(r.proteina_g), energia_kcal: r.energia_kcal == null ? undefined : Number(r.energia_kcal) })),
@@ -117,9 +119,9 @@ export function mapearShares(rows: Linha[]): Compartilhamento[] {
 /* ============================ Gravação por diferença ============================ */
 type Mapa<T> = { tabela: string; linha: (x: T, uid: string) => Linha }
 const COLECOES: Partial<Record<keyof Estado, Mapa<never>>> = {
-  aplicacoes: { tabela: 'applications', linha: (x: Estado['aplicacoes'][number], uid) => ({ id: x.id, user_id: uid, aplicado_em: x.em, local: x.local, observacao: x.obs ?? null }) } as Mapa<never>,
+  aplicacoes: { tabela: 'applications', linha: (x: Estado['aplicacoes'][number], uid) => ({ id: x.id, user_id: uid, aplicado_em: x.em, local: x.local ?? null, observacao: x.obs ?? null, dose_texto: x.dose ?? null, retroativo: !!x.retroativo }) } as Mapa<never>,
   agua: { tabela: 'hydration_records', linha: (x: Estado['agua'][number], uid) => ({ id: x.id, user_id: uid, ml: x.ml, registrado_em: x.em }) } as Mapa<never>,
-  pesos: { tabela: 'weight_records', linha: (x: Estado['pesos'][number], uid) => ({ id: x.id, user_id: uid, peso_kg: x.kg, registrado_em: x.em }) } as Mapa<never>,
+  pesos: { tabela: 'weight_records', linha: (x: Estado['pesos'][number], uid) => ({ id: x.id, user_id: uid, peso_kg: x.kg, registrado_em: x.em, retroativo: !!x.retroativo }) } as Mapa<never>,
   sintomas: { tabela: 'symptoms', linha: (x: Estado['sintomas'][number], uid) => ({ id: x.id, user_id: uid, sintomas: x.sintomas, intensidade: x.intensidade, observacao: x.obs ?? null, alerta_disparado: x.alerta, registrado_em: x.em }) } as Mapa<never>,
   treinos: { tabela: 'workouts', linha: (x: Estado['treinos'][number], uid) => ({ id: x.id, user_id: uid, tipo: x.tipo, duracao_min: x.duracao_min, forca: x.forca, registrado_em: x.em }) } as Mapa<never>,
   canetas: { tabela: 'pen_inventory', linha: (x: Estado['canetas'][number], uid) => ({ id: x.id, user_id: uid, nome: x.nome, lote: x.lote, validade: x.validade, quantidade: x.quantidade }) } as Mapa<never>,
@@ -155,7 +157,7 @@ export async function sincronizar(c: SupabaseClient, uid: string, antes: Estado,
     await ok(c.from('profiles').upsert({
       user_id: uid, nome: p.nome, email: p.email || null, data_nascimento: p.nascimento || null, altura_cm: p.altura_cm || null,
       peso_inicial_kg: p.peso_inicial_kg || null, meta_peso_kg: p.meta_peso_kg || null, meta_proteina_g: p.meta_proteina_g,
-      meta_agua_ml: p.meta_agua_ml, preferencias: p.preferencias, config: agora.config, onboarding_feito: agora.onboardingFeito,
+      meta_agua_ml: p.meta_agua_ml, preferencias: p.preferencias, jornada: p.jornada || null, inicio_tratamento: p.inicio_tratamento || null, config: agora.config, onboarding_feito: agora.onboardingFeito,
       updated_at: new Date().toISOString(),
     }))
     salvo.perfil = agora.perfil

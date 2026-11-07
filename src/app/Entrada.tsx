@@ -4,7 +4,8 @@ import { Link, Navigate, useNavigate, useParams } from 'react-router-dom'
 import Icon from '../components/Icon'
 import Mascot from '../components/Mascot'
 import { Interruptor, Logo, soltarConfete, useToast } from '../components/ui'
-import { PRINCIPIOS, useStore } from '../data/store'
+import { LOCAIS, PRINCIPIOS, useStore, type Aplicacao, type Local, type Peso } from '../data/store'
+import { juntar, paraData } from './Doses'
 import { DIAS_CURTOS, uid } from '../lib/datas'
 import { erroPt } from '../lib/supabase'
 
@@ -229,7 +230,7 @@ export function NovaSenha() {
 }
 
 /* ======================= Onboarding (5 passos) ======================= */
-const TOTAL = 5
+const TOTAL = 6
 
 export function Onboarding() {
   const { passo = '1' } = useParams()
@@ -257,13 +258,23 @@ export function Onboarding() {
     discretas: true,
     lembreteAgua: true,
     termos: false,
+    jornada: (s.perfil.jornada || '') as '' | 'comecando' | 'em_tratamento',
+    inicio: s.perfil.inicio_tratamento,
+    dose_atual: '',
+    ultima: '',
+    local_ultima: '' as Local | '',
+    peso_antes: '',
   }))
   const up = <K extends keyof typeof d>(k: K, v: (typeof d)[K]) => setD((x) => ({ ...x, [k]: v }))
   const alterna = (k: 'objetivos' | 'preferencias', v: string) => up(k, d[k].includes(v) ? d[k].filter((x) => x !== v) : [...d[k], v])
 
   const idade = d.nascimento ? Math.floor((Date.now() - new Date(d.nascimento).getTime()) / (365.25 * 86400000)) : 0
+  const hojeStr = paraData(new Date())
+  const pesoAntes = Number(d.peso_antes.replace(',', '.'))
   const valido = [
     d.nome.trim().length > 1 && idade >= 18 && Number(d.altura) > 100 && Number(d.peso.replace(',', '.')) > 30,
+    d.jornada === 'comecando' ||
+      (d.jornada === 'em_tratamento' && !!d.inicio && d.inicio <= hojeStr && (!d.ultima || (d.ultima >= d.inicio && d.ultima <= hojeStr)) && (!d.peso_antes || pesoAntes > 30)),
     !!d.principio && d.dia >= 0,
     Number(d.meta_proteina) > 0 && Number(d.meta_agua.replace(',', '.')) > 0,
     true,
@@ -271,6 +282,14 @@ export function Onboarding() {
   ][p - 1]
 
   const concluir = (e: React.MouseEvent) => {
+    const emTratamento = d.jornada === 'em_tratamento'
+    const pesoHoje = Number(d.peso.replace(',', '.'))
+    const pesos = [{ id: uid(), kg: pesoHoje, em: new Date().toISOString() } as Peso]
+    if (emTratamento && pesoAntes > 30) pesos.unshift({ id: uid(), kg: pesoAntes, em: juntar(d.inicio, '08:00'), retroativo: true })
+    const ultimaDose: Aplicacao[] =
+      emTratamento && d.ultima
+        ? [{ id: uid(), em: juntar(d.ultima, d.horario), dose: (d.dose_atual || d.dose).trim() || undefined, local: d.local_ultima || undefined, retroativo: d.ultima < hojeStr ? true : undefined }]
+        : []
     set((x) => ({
       ...x,
       onboardingFeito: true,
@@ -279,14 +298,17 @@ export function Onboarding() {
         nome: d.nome.trim().split(' ')[0],
         nascimento: d.nascimento,
         altura_cm: Number(d.altura),
-        peso_inicial_kg: Number(d.peso.replace(',', '.')),
+        peso_inicial_kg: emTratamento && pesoAntes > 30 ? pesoAntes : pesoHoje,
+        jornada: d.jornada || 'comecando',
+        inicio_tratamento: emTratamento ? d.inicio : '',
         meta_peso_kg: Number(d.meta_peso.replace(',', '.')) || 0,
         meta_proteina_g: Number(d.meta_proteina),
         meta_agua_ml: Math.round(Number(d.meta_agua.replace(',', '.')) * 1000),
         preferencias: d.preferencias,
       },
-      medicamento: { id: x.medicamento?.id ?? uid(), principio: d.principio, nome_comercial: d.nome_comercial, dia_semana: d.dia, horario: d.horario, dose_texto: d.dose || 'conforme sua prescrição' },
-      pesos: [{ id: uid(), kg: Number(d.peso.replace(',', '.')), em: new Date().toISOString() }],
+      medicamento: { id: x.medicamento?.id ?? uid(), principio: d.principio, nome_comercial: d.nome_comercial, dia_semana: d.dia, horario: d.horario, dose_texto: (d.dose || d.dose_atual).trim() || 'conforme sua prescrição' },
+      pesos,
+      aplicacoes: [...x.aplicacoes, ...ultimaDose],
       config: { ...x.config, notificacoesDiscretas: d.discretas, lembretesAgua: d.lembreteAgua, lembreteHora: d.horario },
       consentimentos: [
         { id: uid(), tipo: 'termos', versao: 'termos-v1.0', em: new Date().toISOString() },
@@ -295,7 +317,7 @@ export function Onboarding() {
     }))
     soltarConfete({ x: e.clientX, y: e.clientY })
     toast(`Tudo pronto, ${d.nome.trim().split(' ')[0]}!`)
-    nav('/app/home')
+    nav(emTratamento ? '/app/jornada' : '/app/home')
   }
 
   if (!s.userId) return <Navigate to="/app/boas-vindas" replace />
@@ -332,7 +354,7 @@ export function Onboarding() {
               <input id="alt" className="campo" inputMode="numeric" placeholder="166" value={d.altura} onChange={(e) => up('altura', e.target.value.replace(/\D/g, ''))} />
             </div>
             <div>
-              <label className="rotulo" htmlFor="peso">Peso atual (kg)</label>
+              <label className="rotulo" htmlFor="peso">Peso de hoje (kg)</label>
               <input id="peso" className="campo" inputMode="decimal" placeholder="88,5" value={d.peso} onChange={(e) => up('peso', e.target.value.replace(/[^\d,.]/g, ''))} />
             </div>
           </div>
@@ -340,6 +362,58 @@ export function Onboarding() {
       )}
 
       {p === 2 && (
+        <>
+          <h1 className="titulo-tela">Em que momento da sua jornada você está?</h1>
+          <p className="sub-tela">Assim o Dose começa a sua história do ponto certo.</p>
+          <div className="jornada-escolha" role="radiogroup">
+            <button role="radio" aria-checked={d.jornada === 'comecando'} className={d.jornada === 'comecando' ? 'is-on' : ''} onClick={() => up('jornada', 'comecando')}>
+              <b>Vou começar</b>
+              <span>Ainda não fiz a primeira aplicação, ou ela é hoje.</span>
+            </button>
+            <button role="radio" aria-checked={d.jornada === 'em_tratamento'} className={d.jornada === 'em_tratamento' ? 'is-on' : ''} onClick={() => up('jornada', 'em_tratamento')}>
+              <b>Já estou em tratamento</b>
+              <span>Já uso a caneta há algum tempo e quero trazer meu histórico.</span>
+            </button>
+          </div>
+          {d.jornada === 'em_tratamento' && (
+            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} style={{ display: 'flex', flexDirection: 'column' }}>
+              <label className="rotulo" htmlFor="ini">Quando você começou?</label>
+              <input id="ini" className="campo" type="date" max={hojeStr} value={d.inicio} onChange={(e) => up('inicio', e.target.value)} />
+              <div className="duas-col">
+                <div>
+                  <label className="rotulo" htmlFor="dat">Dose atual</label>
+                  <input id="dat" className="campo" placeholder="Ex.: 5 mg" maxLength={40} value={d.dose_atual} onChange={(e) => up('dose_atual', e.target.value)} />
+                </div>
+                <div>
+                  <label className="rotulo" htmlFor="pan">Peso antes de começar (kg)</label>
+                  <input id="pan" className="campo" inputMode="decimal" placeholder="Ex.: 98,2" value={d.peso_antes} onChange={(e) => up('peso_antes', e.target.value.replace(/[^\d,.]/g, ''))} />
+                </div>
+              </div>
+              <label className="rotulo" htmlFor="ult">Data da última aplicação</label>
+              <input id="ult" className="campo" type="date" min={d.inicio || undefined} max={hojeStr} value={d.ultima} onChange={(e) => up('ultima', e.target.value)} />
+              {d.ultima && d.inicio && d.ultima < d.inicio && <p className="erro-campo">A última aplicação não pode ser antes do início.</p>}
+              {d.ultima && (
+                <>
+                  <span className="rotulo">Local da última aplicação (se lembrar)</span>
+                  <div className="grade-locais" role="radiogroup">
+                    {LOCAIS.map((l) => (
+                      <button key={l} role="radio" aria-checked={d.local_ultima === l} className={`chip chip--quadrado chip--turquesa ${d.local_ultima === l ? 'is-on' : ''}`} onClick={() => up('local_ultima', d.local_ultima === l ? '' : l)}>
+                        {l}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+              <div className="dica-dose" style={{ marginTop: 18 }}>
+                <Mascot expressao="piscando" size={44} flutuar={false} />
+                <p>Depois do cadastro, você pode trazer as outras doses do bloco de notas ou do caderno, na tela Jornada.</p>
+              </div>
+            </motion.div>
+          )}
+        </>
+      )}
+
+      {p === 3 && (
         <>
           <h1 className="titulo-tela">Qual medicamento você usa?</h1>
           <p className="sub-tela">Use os dados da sua receita. Eles servem só para organizar seus lembretes.</p>
@@ -368,7 +442,7 @@ export function Onboarding() {
             </div>
             <div>
               <label className="rotulo" htmlFor="dose">Dose prescrita</label>
-              <input id="dose" className="campo" placeholder="Conforme a receita" value={d.dose} onChange={(e) => up('dose', e.target.value)} />
+              <input id="dose" className="campo" placeholder={d.dose_atual || 'Conforme a receita'} value={d.dose} onChange={(e) => up('dose', e.target.value)} />
             </div>
           </div>
           <div className="aviso" style={{ marginTop: 18 }}>
@@ -378,7 +452,7 @@ export function Onboarding() {
         </>
       )}
 
-      {p === 3 && (
+      {p === 4 && (
         <>
           <h1 className="titulo-tela">Quais são seus objetivos?</h1>
           <p className="sub-tela">Metas combinadas com seu profissional. Dá para mudar depois.</p>
@@ -409,7 +483,7 @@ export function Onboarding() {
         </>
       )}
 
-      {p === 4 && (
+      {p === 5 && (
         <>
           <h1 className="titulo-tela">Como você gosta de comer?</h1>
           <p className="sub-tela">Assim o Dose dá dicas que combinam com você.</p>
@@ -424,7 +498,7 @@ export function Onboarding() {
         </>
       )}
 
-      {p === 5 && (
+      {p === 6 && (
         <>
           <h1 className="titulo-tela">Lembretes no seu tempo</h1>
           <p className="sub-tela">Notificações discretas: sem nome de remédio, peso ou sintoma na tela bloqueada.</p>

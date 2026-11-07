@@ -217,7 +217,13 @@ Deno.serve(async (req) => {
     d.titulo('Aplicações')
     if (med?.[0]) d.texto(`${med[0].principio_ativo}${med[0].nome_comercial ? ` (${med[0].nome_comercial})` : ''}. Dose conforme a receita, como o paciente registrou: "${presc?.[0]?.dose_texto ?? 'não informada'}". O Canetolino não calcula nem sugere doses.`)
     d.texto(`${apl.length} aplicações registradas no período.`, { cor: CINZA })
-    if (apl.length) d.tabela([...apl].reverse().map((a) => [dataHora(a.aplicado_em), LOCAL[a.local] ?? a.local, a.observacao ?? '']), [110, 150, 239])
+    const retro = apl.filter((a) => a.retroativo).length
+    if (retro) d.texto(`${retro} ${retro === 1 ? 'aplicação foi registrada' : 'aplicações foram registradas'} depois pelo paciente (histórico anotado antes do app).`, { tam: 9, cor: CINZA })
+    if (apl.length)
+      d.tabela(
+        [...apl].reverse().map((a) => [dataHora(a.aplicado_em), a.dose_texto ?? '-', a.local ? LOCAL[a.local] ?? a.local : 'local não informado', [a.observacao, a.retroativo ? 'registrada depois' : ''].filter(Boolean).join(' · ')]),
+        [100, 70, 130, 199],
+      )
   }
 
   if (modulos.includes('sintomas')) {

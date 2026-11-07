@@ -163,7 +163,7 @@ export default function Ficha({ c }: { c: SupabaseClient }) {
             <table className="p-tabela p-tabela--simples">
               <tbody>
                 {[...aplicacoes].reverse().map((a) => (
-                  <tr key={a.id}><td>{dataCurta(a.em)} · {horaBR(a.em)}</td><td>{LOCAL_LONGO[a.local]}</td><td className="p-cinza">{a.obs ?? ''}</td></tr>
+                  <tr key={a.id}><td>{dataCurta(a.em)} · {horaBR(a.em)}</td><td>{a.dose ?? '—'}</td><td>{a.local ? LOCAL_LONGO[a.local] : 'local não informado'}</td><td className="p-cinza">{[a.obs, a.retroativo && 'registrada depois pelo paciente'].filter(Boolean).join(' · ')}</td></tr>
                 ))}
               </tbody>
             </table>

@@ -45,9 +45,10 @@ export type Medida = { id: string; tipo: TipoMedida; cm: number; em: string }
 export type BemEstar = { id: string; em: string; sono_horas?: number; sono_qualidade?: number; humor?: number; energia?: number; fome?: number; obs?: string }
 export type AlimentoRotulo = { id: string; nome: string; porcao_g: number; porcao_texto?: string; proteina_g: number; energia_kcal?: number }
 export type Refeicao = { id: string; tipo: string; em: string; itens: ItemRefeicao[]; origem: Origem; versao_tabela: string; foto?: string }
-export type Aplicacao = { id: string; em: string; local: Local; obs?: string }
+/** `dose`: como está na receita (ex.: "2,5 mg"); `retroativo`: registrada depois (caderno, bloco de notas). */
+export type Aplicacao = { id: string; em: string; local?: Local; obs?: string; dose?: string; retroativo?: true }
 export type Agua = { id: string; ml: number; em: string }
-export type Peso = { id: string; kg: number; em: string }
+export type Peso = { id: string; kg: number; em: string; retroativo?: true }
 export type Sintoma = { id: string; em: string; sintomas: string[]; intensidade: number; obs?: string; alerta: boolean }
 export type Treino = { id: string; em: string; tipo: string; duracao_min: number; forca: boolean }
 export type Caneta = { id: string; nome: string; lote: string; validade: string; quantidade: number }
@@ -84,6 +85,10 @@ export type Estado = {
     preferencias: string[]
     plano: 'basico' | 'premium'
     email: string
+    /** em que momento da jornada a pessoa entrou no app */
+    jornada: '' | 'comecando' | 'em_tratamento'
+    /** AAAA-MM-DD: primeira aplicação (de verdade, mesmo antes do app) */
+    inicio_tratamento: string
   }
   medicamento: { id: string; principio: string; nome_comercial: string; dia_semana: number; horario: string; dose_texto: string } | null
   aplicacoes: Aplicacao[]
@@ -108,7 +113,7 @@ export const vazio = (): Estado => ({
   versao: 1,
   sessao: false,
   onboardingFeito: false,
-  perfil: { nome: '', nascimento: '', altura_cm: 0, peso_inicial_kg: 0, meta_peso_kg: 0, meta_proteina_g: 100, meta_agua_ml: 2000, preferencias: [], plano: 'basico', email: '' },
+  perfil: { nome: '', nascimento: '', altura_cm: 0, peso_inicial_kg: 0, meta_peso_kg: 0, meta_proteina_g: 100, meta_agua_ml: 2000, preferencias: [], plano: 'basico', email: '', jornada: '', inicio_tratamento: '' },
   medicamento: null,
   aplicacoes: [],
   agua: [],
@@ -139,6 +144,20 @@ export function proximaAplicacao(s: Estado): Date | null {
   const alvo = jaAplicou ? new Date(d.getTime() + 7 * DIA_MS) : d
   alvo.setHours(h, m, 0, 0)
   return alvo
+}
+
+/** Início real do tratamento: a data informada no cadastro ou a primeira dose registrada, o que vier antes. */
+export function inicioDoTratamento(s: Estado): Date | null {
+  const datas = [...s.aplicacoes.map((a) => new Date(a.em).getTime())]
+  if (s.perfil.inicio_tratamento) datas.push(new Date(`${s.perfil.inicio_tratamento}T12:00:00`).getTime())
+  return datas.length ? new Date(Math.min(...datas)) : null
+}
+
+/** Dose mais recente registrada (ou a da receita), para já vir preenchida no próximo registro. */
+export function doseAtual(s: Estado): string {
+  const ult = [...s.aplicacoes].filter((a) => a.dose).sort((a, b) => +new Date(b.em) - +new Date(a.em))[0]
+  const receita = s.medicamento?.dose_texto
+  return ult?.dose ?? (receita && !/conforme/i.test(receita) ? receita : '')
 }
 
 /** Sugestão de local: o menos usado nas últimas 4 aplicações (regra fixa, sem IA). */

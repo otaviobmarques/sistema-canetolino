@@ -9,6 +9,7 @@ import { PLANOS, precoBR, type Plano } from '../data/planos'
 import { TIPOS_MEDIDA, ultimoPeso, useStore, type TipoMedida } from '../data/store'
 import { dataBR, dataCurta, num, uid } from '../lib/datas'
 import { apagarFoto, listarFotos, salvarFoto, type Angulo, type FotoEvolucao } from '../lib/fotos'
+import { hoje, juntar } from './Doses'
 import { assinar, cancelarAssinatura, cpfValido, minhaAssinatura } from '../lib/pagamentos'
 import { erroPt, sb } from '../lib/supabase'
 
@@ -57,7 +58,10 @@ function AbaPeso() {
   const toast = useToast()
   const ult = ultimoPeso(s)
   const [kg, setKg] = useState(ult?.kg ?? (s.perfil.peso_inicial_kg || 80))
+  const [data, setData] = useState(hoje())
+  const [todos, setTodos] = useState(false)
   const pesos = [...s.pesos].sort((a, b) => +new Date(a.em) - +new Date(b.em))
+  const recentes = [...pesos].reverse()
   return (
     <>
       <div className="peso-seletor">
@@ -72,7 +76,38 @@ function AbaPeso() {
       {pesos.length > 1 && (
         <div className="card" style={{ marginTop: 16 }}>
           <b className="card-titulo">Histórico</b>
-          <GraficoPeso pontos={pesos.slice(-8).map((p) => p.kg)} altura={120} />
+          <GraficoPeso pontos={(pesos.length > 12 ? pesos.slice(-12) : pesos).map((p) => p.kg)} altura={120} />
+          <p className="legenda">Desde {dataBR(pesos[0].em)}{pesos.length > 12 ? ' · últimas 12 pesagens no gráfico' : ''}</p>
+        </div>
+      )}
+      <label className="rotulo" htmlFor="peso-data">Data da pesagem</label>
+      <input id="peso-data" className="campo" type="date" max={hoje()} value={data} onChange={(e) => setData(e.target.value)} />
+      {data < hoje() && <p className="legenda" style={{ marginTop: 6 }}>Peso de um dia anterior: entra no gráfico na data certa.</p>}
+      {recentes.length > 0 && (
+        <div className="card lista" style={{ marginTop: 14 }}>
+          {(todos ? recentes : recentes.slice(0, 4)).map((p) => (
+            <div key={p.id} className="dose-linha">
+              <div className="dose-linha__txt">
+                <b>{num(p.kg)} kg</b>
+                <span className="legenda">{dataBR(p.em)}{p.retroativo ? ' · registrado depois' : ''}</span>
+              </div>
+              <button
+                className="btn-icone btn-icone--peq btn-icone--perigo"
+                aria-label={`Excluir peso de ${dataBR(p.em)}`}
+                onClick={() => {
+                  set((x) => ({ ...x, pesos: x.pesos.filter((y) => y.id !== p.id) }))
+                  toast(`Peso de ${dataBR(p.em)} excluído`, 'info', { rotulo: 'Desfazer', fn: () => set((x) => ({ ...x, pesos: [...x.pesos, p] })) })
+                }}
+              >
+                <Icon name="trash" size={17} />
+              </button>
+            </div>
+          ))}
+          {recentes.length > 4 && (
+            <button className="btn btn--fantasma btn--bloco btn--pequeno" style={{ margin: '6px 0' }} onClick={() => setTodos(!todos)}>
+              {todos ? 'Mostrar menos' : `Ver as ${recentes.length} pesagens`}
+            </button>
+          )}
         </div>
       )}
       <div className="dica-dose" style={{ marginTop: 16 }}>
@@ -83,9 +118,12 @@ function AbaPeso() {
         <button
           className="btn btn--primario btn--bloco"
           onClick={() => {
-            set((x) => ({ ...x, pesos: [...x.pesos, { id: uid(), kg, em: new Date().toISOString() }] }))
-            toast(`Peso registrado: ${num(kg)} kg`)
-            nav('/app/home')
+            const passado = data < hoje()
+            const novo = { id: uid(), kg, em: passado ? juntar(data, '08:00') : new Date().toISOString(), ...(passado ? { retroativo: true as const } : {}) }
+            set((x) => ({ ...x, pesos: [...x.pesos, novo] }))
+            toast(`Peso registrado: ${num(kg)} kg${passado ? ` em ${dataBR(novo.em)}` : ''}`, 'ok', { rotulo: 'Desfazer', fn: () => set((x) => ({ ...x, pesos: x.pesos.filter((y) => y.id !== novo.id) })) })
+            if (passado) setData(hoje())
+            else nav('/app/home')
           }}
         >
           Salvar peso

@@ -6,6 +6,7 @@ import Mascot, { type Expressao } from '../components/Mascot'
 import { Contador, Logo, soltarConfete } from '../components/ui'
 import { MiniCompartilhar, MiniFoto, MiniInicio, MiniJornada, MiniRadar } from './MiniTelas'
 import { PLANOS, precoBR } from '../data/planos'
+import logoRedbox from '../assets/redbox-branco.png'
 import '../styles/landing.css'
 
 const EASE = [0.22, 1, 0.36, 1] as const
@@ -690,7 +691,13 @@ function Rodape() {
           <Link to="/admin">Área da equipe</Link>
         </div>
       </div>
-      <div className="lp-container rodape__base">© {new Date().getFullYear()} Canetolino. Feito com 💜 no Brasil.</div>
+      <div className="lp-container rodape__base">
+        <span>© {new Date().getFullYear()} Canetolino. Feito com 💜 no Brasil.</span>
+        <span className="rodape__agencia">
+          Site desenvolvido pela Agência
+          <img src={logoRedbox} alt="RedBox" width={96} height={27} loading="lazy" />
+        </span>
+      </div>
     </footer>
   )
 }

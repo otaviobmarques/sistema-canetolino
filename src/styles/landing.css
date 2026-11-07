@@ -305,5 +305,7 @@
 .rodape__grid b { color: #fff; }
 .rodape__grid a { color: #cbb9f5; text-decoration: none; font-size: 14.5px; }
 .rodape__grid a:hover { color: var(--turquesa); }
-.rodape__base { border-top: 1px solid rgba(255,255,255,.08); margin-top: 50px; padding-top: 24px; font-size: 13.5px; }
+.rodape__base { border-top: 1px solid rgba(255,255,255,.08); margin-top: 50px; padding-top: 24px; font-size: 13.5px; display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; }
+.rodape__agencia { display: inline-flex; align-items: center; gap: 10px; }
+.rodape__agencia img { height: 27px; width: auto; display: block; }
 @media (max-width: 700px) { .rodape__grid { grid-template-columns: 1fr; } }

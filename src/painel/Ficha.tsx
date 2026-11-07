@@ -7,9 +7,10 @@ import Icon from '../components/Icon'
 import Mascot from '../components/Mascot'
 import { useToast } from '../components/ui'
 import { lerSaude } from '../data/nuvem'
-import { LOCAL_LONGO, MODULOS, TIPOS_MEDIDA, vazio, type Estado, type Modulo } from '../data/store'
+import { LOCAL_LONGO, MODULOS, numerarAplicacoes, TIPOS_MEDIDA, vazio, type Estado, type Modulo } from '../data/store'
 import { DIA_MS, dataBR, dataCurta, diasEntre, horaBR, inicioDoDia, mesmoDia, num } from '../lib/datas'
 import { erroPt } from '../lib/supabase'
+import { formatarDose, ordinal } from '../lib/dose'
 import { baixarRelatorio } from './relatorio'
 
 type Linha = { paciente_id: string; nome: string; peso_inicial_kg: number | null; meta_proteina_g: number; meta_agua_ml: number; modulos: Modulo[]; expira_em: string | null }
@@ -60,6 +61,7 @@ export default function Ficha({ c }: { c: SupabaseClient }) {
   const pesos = no(s.pesos)
   const refeicoes = no(s.refeicoes)
   const aplicacoes = no(s.aplicacoes)
+  const numeros = numerarAplicacoes(s.aplicacoes) // numeração de todo o tratamento, não só do período
   const sintomas = no(s.sintomas)
   const bem = no(s.bemestar)
   const treinos = no(s.treinos)
@@ -158,12 +160,12 @@ export default function Ficha({ c }: { c: SupabaseClient }) {
 
         {m.includes('aplicacoes') && (
           <Secao titulo="Aplicações" i={2}>
-            {s.medicamento && <p className="p-cinza">{s.medicamento.principio}{s.medicamento.nome_comercial ? ` (${s.medicamento.nome_comercial})` : ''} · dose da receita: {s.medicamento.dose_texto} · dia de aplicação: {['domingo', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado'][s.medicamento.dia_semana]}, {s.medicamento.horario}</p>}
+            {s.medicamento && <p className="p-cinza">{s.medicamento.principio}{s.medicamento.nome_comercial ? ` (${s.medicamento.nome_comercial})` : ''} · dose da receita: {formatarDose(s.medicamento.dose_texto)} · dia de aplicação: {['domingo', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado'][s.medicamento.dia_semana]}, {s.medicamento.horario}</p>}
             <p className="p-cinza">{aplicacoes.length} registradas no período · cerca de {Math.max(1, Math.round(dias / 7))} previstas (semanal)</p>
             <table className="p-tabela p-tabela--simples">
               <tbody>
                 {[...aplicacoes].reverse().map((a) => (
-                  <tr key={a.id}><td>{dataCurta(a.em)} · {horaBR(a.em)}</td><td>{a.dose ?? '—'}</td><td>{a.local ? LOCAL_LONGO[a.local] : 'local não informado'}</td><td className="p-cinza">{[a.obs, a.retroativo && 'registrada depois pelo paciente'].filter(Boolean).join(' · ')}</td></tr>
+                  <tr key={a.id}><td><b>{ordinal(numeros.get(a.id) ?? 0)}</b> · {dataCurta(a.em)} · {horaBR(a.em)}</td><td>{a.dose ? formatarDose(a.dose) : '—'}</td><td>{a.local ? LOCAL_LONGO[a.local] : 'local não informado'}</td><td className="p-cinza">{[a.obs, a.retroativo && 'registrada depois pelo paciente'].filter(Boolean).join(' · ')}</td></tr>
                 ))}
               </tbody>
             </table>

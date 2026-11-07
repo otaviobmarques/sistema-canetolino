@@ -1,5 +1,6 @@
 import BotaoInstalar from '../components/Instalar'
-import { HistoricoDoses, ModalDose } from './Doses'
+import { CampoDose, HistoricoDoses, ModalDose } from './Doses'
+import { formatarDose } from '../lib/dose'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
@@ -94,7 +95,7 @@ export function Home() {
             {DIAS_LONGOS[prox.getDay()].replace(/^./, (c) => c.toUpperCase())}, {dataDiaMes(prox)} · {horaCurta(s.medicamento!.horario)}
           </h2>
           <p className="prox-apl__med">
-            {s.medicamento!.principio} · dose {s.medicamento!.dose_texto.toLowerCase().startsWith('conforme') ? s.medicamento!.dose_texto : `conforme receita (${s.medicamento!.dose_texto})`}
+            {s.medicamento!.principio} · dose {doseAtual(s) ? `conforme receita (${doseAtual(s)})` : s.medicamento!.dose_texto}
           </p>
           <Link to="/app/jornada" className="btn btn--turquesa btn--bloco" style={{ marginTop: 14 }}>
             Ver minha jornada
@@ -181,7 +182,7 @@ export function Jornada() {
   const gasto = s.compras.filter((c) => new Date(c.em).getMonth() === mes.getMonth() && new Date(c.em).getFullYear() === mes.getFullYear()).reduce((t, c) => t + c.valor_centavos, 0)
 
   const registrar = (e: React.MouseEvent) => {
-    const nova = { id: uid(), em: new Date().toISOString(), local, obs: obs.trim() || undefined, dose: dose.trim() || undefined }
+    const nova = { id: uid(), em: new Date().toISOString(), local, obs: obs.trim() || undefined, dose: formatarDose(dose) || undefined }
     const antes = { aplicacoes: s.aplicacoes, canetas: s.canetas }
     set((x) => ({
       ...x,
@@ -215,10 +216,11 @@ export function Jornada() {
             </button>
           ))}
         </div>
-        <div className="duas-col" style={{ marginTop: 10 }}>
-          <input className="campo" style={{ minHeight: 46 }} placeholder="Dose (ex.: 2,5 mg)" maxLength={40} aria-label="Dose" value={dose} onChange={(e) => setDose(e.target.value)} />
-          <input className="campo" style={{ minHeight: 46 }} placeholder="Observação" maxLength={200} aria-label="Observação (opcional)" value={obs} onChange={(e) => setObs(e.target.value)} />
+        <div className="jornada-dose">
+          <label className="rotulo" htmlFor="j-dose">Dose</label>
+          <CampoDose id="j-dose" value={dose} onChange={setDose} />
         </div>
+        <input className="campo" style={{ marginTop: 8, minHeight: 46 }} placeholder="Observação (opcional)" maxLength={200} aria-label="Observação (opcional)" value={obs} onChange={(e) => setObs(e.target.value)} />
         {aplicouHoje && <p className="legenda" style={{ marginTop: 8 }}>Você já registrou uma dose hoje. Se foi engano, edite ou exclua no histórico abaixo.</p>}
         <button className="btn btn--primario btn--bloco" style={{ marginTop: 12 }} onClick={registrar}>
           Registrar aplicação de hoje
@@ -237,6 +239,12 @@ export function Jornada() {
       )}
 
       <h2 className="secao-titulo">Histórico de aplicações</h2>
+      {ordenadas.length > 0 && (
+        <p className="total-aplicacoes">
+          Você já fez <b>{ordenadas.length} {ordenadas.length === 1 ? 'aplicação' : 'aplicações'}</b>
+          {inicio ? ` desde ${dataBR(inicio)}` : ''}.
+        </p>
+      )}
       {ordenadas.length ? (
         <HistoricoDoses />
       ) : (

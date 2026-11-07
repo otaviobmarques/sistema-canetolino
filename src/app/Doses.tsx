@@ -4,9 +4,10 @@ import { useNavigate } from 'react-router-dom'
 import Icon from '../components/Icon'
 import Mascot from '../components/Mascot'
 import { Modal, useToast } from '../components/ui'
-import { doseAtual, LOCAIS, LOCAL_LONGO, useStore, type Aplicacao, type Estado, type Local, type Peso } from '../data/store'
+import { doseAtual, LOCAIS, LOCAL_LONGO, numerarAplicacoes, useStore, type Aplicacao, type Estado, type Local, type Peso } from '../data/store'
 import { dataBR, DIA_MS, DIAS_CURTOS, DIAS_LONGOS, mesmoDia, num, uid } from '../lib/datas'
 import { anotacoesPorTexto } from '../lib/ia'
+import { formatarDose, ordinal, separarDose, UNIDADES, type Unidade } from '../lib/dose'
 
 /* Doses: registrar em outra data, editar, excluir (com Desfazer) e trazer o histórico de antes do app
    (uma a uma, em sequência ou colando as anotações do bloco de notas), sempre com confirmação. */
@@ -26,6 +27,35 @@ export const hoje = () => paraData(new Date())
 const ehPassado = (iso: string) => paraData(iso) < hoje()
 export const nomeLocal = (l?: Local) => (l ? LOCAL_LONGO[l] : 'Local não informado')
 
+/* ---------------- campo de dose com unidade ---------------- */
+/** Número + unidade (mg já vem escolhido). Devolve o texto pronto, ex.: "2,5 mg". */
+export function CampoDose({ id, value, onChange, rotulo = 'Dose' }: { id: string; value: string; onChange: (v: string) => void; rotulo?: string }) {
+  const p = separarDose(value)
+  const [valor, setValor] = useState(p?.valor ?? '')
+  const [unidade, setUnidade] = useState<Unidade>(p?.unidade ?? 'mg')
+  const emitir = (v: string, u: Unidade) => onChange(v ? `${v} ${u}` : '')
+  return (
+    <div className="campo-dose">
+      <input
+        id={id}
+        className="campo"
+        inputMode="decimal"
+        placeholder="Ex.: 2,5"
+        aria-label={rotulo}
+        value={valor}
+        onChange={(e) => {
+          const v = e.target.value.replace('.', ',').replace(/[^\d,]/g, '').replace(/,(?=.*,)/g, '').slice(0, 6)
+          setValor(v)
+          emitir(v, unidade)
+        }}
+      />
+      <select className="campo" aria-label="Unidade da dose" value={unidade} onChange={(e) => { const u = e.target.value as Unidade; setUnidade(u); emitir(valor, u) }}>
+        {UNIDADES.map((u) => <option key={u} value={u}>{u}</option>)}
+      </select>
+    </div>
+  )
+}
+
 /* ---------------- formulário de uma dose ---------------- */
 type DadosDose = { data: string; hora: string; dose: string; local: Local | ''; obs: string }
 
@@ -44,7 +74,7 @@ function CamposDose({ v, set, minData }: { v: DadosDose; set: (v: DadosDose) => 
         </div>
       </div>
       <label className="rotulo" htmlFor="dd-dose">Dose (como na receita)</label>
-      <input id="dd-dose" className="campo" placeholder="Ex.: 2,5 mg" maxLength={40} value={v.dose} onChange={(e) => up('dose', e.target.value)} />
+      <CampoDose id="dd-dose" value={v.dose} onChange={(x) => up('dose', x)} />
       <span className="rotulo">Local</span>
       <div className="grade-locais" role="radiogroup" aria-label="Local da aplicação">
         {LOCAIS.map((l) => (
@@ -85,7 +115,7 @@ export function ModalDose({ aberto, inicial, onFechar }: { aberto: boolean; inic
       id: inicial?.id ?? uid(),
       em,
       local: v.local || undefined,
-      dose: v.dose.trim() || undefined,
+      dose: formatarDose(v.dose) || undefined,
       obs: v.obs.trim() || undefined,
       retroativo: ehPassado(em) || inicial?.retroativo ? true : undefined,
     }
@@ -120,6 +150,7 @@ export function HistoricoDoses() {
   const [editar, setEditar] = useState<Aplicacao | null>(null)
   const [excluir, setExcluir] = useState<Aplicacao | null>(null)
   const ordenadas = useMemo(() => [...s.aplicacoes].sort((a, b) => +new Date(b.em) - +new Date(a.em)), [s.aplicacoes])
+  const numeros = useMemo(() => numerarAplicacoes(s.aplicacoes), [s.aplicacoes])
   const mostrar = todas ? ordenadas : ordenadas.slice(0, 5)
 
   const confirmarExclusao = () => {
@@ -137,9 +168,9 @@ export function HistoricoDoses() {
           {mostrar.map((a) => (
             <motion.div key={a.id} className="dose-linha" layout initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}>
               <div className="dose-linha__txt">
-                <b>{DIAS_CURTOS[new Date(a.em).getDay()]}, {dataBR(a.em)}</b>
+                <b>{ordinal(numeros.get(a.id) ?? 0)} aplicação · {DIAS_CURTOS[new Date(a.em).getDay()]}, {dataBR(a.em)}</b>
                 <span className="legenda">
-                  {[a.dose, nomeLocal(a.local)].filter(Boolean).join(' · ')}
+                  {[formatarDose(a.dose), nomeLocal(a.local)].filter(Boolean).join(' · ')}
                   {a.retroativo && ' · registrada depois'}
                 </span>
               </div>
@@ -161,10 +192,10 @@ export function HistoricoDoses() {
         <h3 style={{ textAlign: 'center' }}>Excluir esta dose?</h3>
         {excluir && (
           <p className="legenda" style={{ textAlign: 'center', fontSize: 15 }}>
-            {DIAS_LONGOS[new Date(excluir.em).getDay()]}, {dataBR(excluir.em)}{excluir.dose ? ` · ${excluir.dose}` : ''} · {nomeLocal(excluir.local).toLowerCase()}
+            {ordinal(numeros.get(excluir.id) ?? 0)} aplicação · {DIAS_LONGOS[new Date(excluir.em).getDay()]}, {dataBR(excluir.em)}{excluir.dose ? ` · ${formatarDose(excluir.dose)}` : ''} · {nomeLocal(excluir.local).toLowerCase()}
           </p>
         )}
-        <p className="legenda" style={{ textAlign: 'center' }}>A próxima aplicação e os lembretes são recalculados na hora.</p>
+        <p className="legenda" style={{ textAlign: 'center' }}>A numeração, a próxima aplicação e os lembretes são recalculados na hora.</p>
         <div className="duas-col" style={{ marginTop: 16 }}>
           <button className="btn btn--contorno" onClick={() => setExcluir(null)}>Manter</button>
           <button className="btn btn--perigo-cheio" onClick={confirmarExclusao}>Excluir</button>
@@ -206,13 +237,13 @@ export function lerAnotacoesLocal(texto: string): Omit<Rascunho, 'chave' | 'incl
       const lado = /\besq/.test(l) ? 'esq.' : /\bdir/.test(l) ? 'dir.' : null
       const parte = /abd|barriga|umbigo/.test(l) ? 'Abdômen' : /coxa|perna/.test(l) ? 'Coxa' : /braco/.test(l) ? 'Braço' : null
       const local = parte && lado ? (`${parte} ${lado}` as Local) : undefined
-      out.push({ tipo: 'dose', em, dose: dose ? `${dose[1]} ${dose[2].toLowerCase()}` : undefined, local, trecho: linha.trim() })
+      out.push({ tipo: 'dose', em, dose: dose ? formatarDose(`${dose[1]} ${dose[2]}`) : undefined, local, trecho: linha.trim() })
     }
   }
   return out
 }
 
-type Aba = 'uma' | 'sequencia' | 'colar'
+type Aba = 'uma' | 'sequencia' | 'pesos' | 'colar'
 
 export function DosesAnteriores() {
   const nav = useNavigate()
@@ -227,6 +258,9 @@ export function DosesAnteriores() {
   // em sequência
   const inicioSugerido = s.perfil.inicio_tratamento || paraData(new Date(Date.now() - 28 * DIA_MS))
   const [seq, setSeq] = useState({ inicio: inicioSugerido, fim: paraData(new Date(Date.now() - DIA_MS)), intervalo: 7, hora: s.medicamento?.horario ?? '08:00', dose: doseAtual(s), local: 'rodizio' as Local | 'rodizio' | '' })
+  // pesos de datas passadas
+  const [peso, setPeso] = useState({ data: '', kg: '' })
+  const kgPeso = Number(peso.kg.replace(',', '.'))
   // colar
   const [texto, setTexto] = useState('')
   const [lendo, setLendo] = useState(false)
@@ -248,7 +282,7 @@ export function DosesAnteriores() {
     let i = 0
     for (let d = ini; d <= fim && itens.length < 104; d = new Date(d.getTime() + seq.intervalo * DIA_MS), i++) {
       const local = seq.local === 'rodizio' ? LOCAIS[i % LOCAIS.length] : seq.local || undefined
-      itens.push({ tipo: 'dose', em: juntar(paraData(d), seq.hora), dose: seq.dose.trim() || undefined, local })
+      itens.push({ tipo: 'dose', em: juntar(paraData(d), seq.hora), dose: formatarDose(seq.dose) || undefined, local })
     }
     const n = adicionar(itens)
     toast(`${n} ${n === 1 ? 'dose adicionada' : 'doses adicionadas'} à lista para conferir`)
@@ -264,7 +298,7 @@ export function DosesAnteriores() {
       itens = r.registros.map((x) => ({
         tipo: x.tipo,
         em: juntar(x.data, x.hora || s.medicamento?.horario || '08:00'),
-        dose: x.tipo === 'dose' ? x.dose || undefined : undefined,
+        dose: x.tipo === 'dose' ? formatarDose(x.dose) || undefined : undefined,
         local: (LOCAIS as readonly string[]).includes(x.local) ? (x.local as Local) : undefined,
         kg: x.tipo === 'peso' ? x.peso_kg : undefined,
         obs: x.obs || undefined,
@@ -300,9 +334,10 @@ export function DosesAnteriores() {
   }
 
   const ABAS: { id: Aba; nome: string }[] = [
-    { id: 'sequencia', nome: 'Em sequência' },
+    { id: 'sequencia', nome: 'Sequência' },
     { id: 'uma', nome: 'Uma a uma' },
-    { id: 'colar', nome: 'Colar anotações' },
+    { id: 'pesos', nome: 'Pesos' },
+    { id: 'colar', nome: 'Colar' },
   ]
 
   return (
@@ -311,7 +346,7 @@ export function DosesAnteriores() {
         <button className="btn-icone" onClick={() => nav(-1)} aria-label="Voltar"><Icon name="back" /></button>
         <h1 className="titulo-tela" style={{ fontSize: 24 }}>Doses anteriores</h1>
       </div>
-      <p className="sub-tela" style={{ marginTop: 0 }}>Traga as doses que você anotou antes do app. Nada é salvo sem você conferir.</p>
+      <p className="sub-tela" style={{ marginTop: 0 }}>Traga as doses e os pesos que você anotou antes do app. Nada é salvo sem você conferir.</p>
 
       <div className="abas-app" role="tablist" style={{ marginTop: 14 }}>
         {ABAS.map((a) => (
@@ -328,7 +363,7 @@ export function DosesAnteriores() {
               style={{ marginTop: 14 }}
               disabled={!uma.data || uma.data > hoje()}
               onClick={() => {
-                adicionar([{ tipo: 'dose', em: juntar(uma.data, uma.hora), dose: uma.dose.trim() || undefined, local: uma.local || undefined, obs: uma.obs.trim() || undefined }])
+                adicionar([{ tipo: 'dose', em: juntar(uma.data, uma.hora), dose: formatarDose(uma.dose) || undefined, local: uma.local || undefined, obs: uma.obs.trim() || undefined }])
                 setUma({ ...uma, data: '', obs: '', local: '' })
               }}
             >
@@ -362,7 +397,7 @@ export function DosesAnteriores() {
             <div className="duas-col">
               <div>
                 <label className="rotulo" htmlFor="sq-dose">Dose</label>
-                <input id="sq-dose" className="campo" placeholder="Ex.: 2,5 mg" maxLength={40} value={seq.dose} onChange={(e) => setSeq({ ...seq, dose: e.target.value })} />
+                <CampoDose id="sq-dose" value={seq.dose} onChange={(x) => setSeq({ ...seq, dose: x })} />
               </div>
               <div>
                 <label className="rotulo" htmlFor="sq-hora">Horário</label>
@@ -378,6 +413,33 @@ export function DosesAnteriores() {
             <p className="legenda" style={{ marginTop: 6 }}>Mudou de dose no meio do caminho? Gere uma sequência para cada dose.</p>
             <button className="btn btn--lilas btn--bloco" style={{ marginTop: 14 }} disabled={!seq.inicio || !seq.fim || seq.fim < seq.inicio} onClick={gerarSequencia}>
               <Icon name="calendar" size={18} /> Criar a sequência
+            </button>
+          </>
+        )}
+
+        {aba === 'pesos' && (
+          <>
+            <p className="legenda">Pesos de antes ou do começo do tratamento: o gráfico passa a começar no início real.</p>
+            <div className="duas-col">
+              <div>
+                <label className="rotulo" htmlFor="ps-data">Data da pesagem</label>
+                <input id="ps-data" className="campo" type="date" max={hoje()} value={peso.data} onChange={(e) => setPeso({ ...peso, data: e.target.value })} />
+              </div>
+              <div>
+                <label className="rotulo" htmlFor="ps-kg">Peso (kg)</label>
+                <input id="ps-kg" className="campo" inputMode="decimal" placeholder="Ex.: 96,4" value={peso.kg} onChange={(e) => setPeso({ ...peso, kg: e.target.value.replace(/[^\d,.]/g, '') })} />
+              </div>
+            </div>
+            <button
+              className="btn btn--lilas btn--bloco"
+              style={{ marginTop: 14 }}
+              disabled={!peso.data || peso.data > hoje() || !(kgPeso >= 30 && kgPeso <= 400)}
+              onClick={() => {
+                adicionar([{ tipo: 'peso', em: juntar(peso.data, '08:00'), kg: Math.round(kgPeso * 10) / 10 }])
+                setPeso({ data: '', kg: '' })
+              }}
+            >
+              <Icon name="plus" size={18} /> Adicionar à lista
             </button>
           </>
         )}
@@ -417,7 +479,7 @@ export function DosesAnteriores() {
               <div className="dose-linha__txt">
                 <b>{r.tipo === 'dose' ? 'Dose' : 'Peso'} · {DIAS_CURTOS[new Date(r.em).getDay()]}, {dataBR(r.em)}</b>
                 <span className="legenda">
-                  {r.tipo === 'dose' ? [r.dose ?? 'dose não informada', nomeLocal(r.local)].join(' · ') : `${num(r.kg ?? 0)} kg`}
+                  {r.tipo === 'dose' ? [r.dose ? formatarDose(r.dose) : 'dose não informada', nomeLocal(r.local)].join(' · ') : `${num(r.kg ?? 0)} kg`}
                   {r.repetida && ' · já existe um registro neste dia'}
                 </span>
                 {r.trecho && <small className="dose-linha__trecho">“{r.trecho}”</small>}

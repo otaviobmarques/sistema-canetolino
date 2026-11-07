@@ -35,6 +35,15 @@ function inicioDoDiaUtc(dia: string, fuso: string) {
   return new Date(new Date(`${dia}T00:00:00Z`).getTime() + offset)
 }
 
+/** Dose sempre com unidade: "2,5" vira "2,5 mg", "5mg" vira "5 mg"; texto livre fica como está. */
+const UNIDADE: Record<string, string> = { mg: 'mg', ml: 'mL', ui: 'UI', u: 'UI', unidades: 'UI', clique: 'cliques', cliques: 'cliques' }
+function formatarDose(t?: string | null) {
+  const s = String(t ?? '').trim()
+  const m = s.match(/^(\d+(?:[.,]\d+)?)\s*([a-zA-Z]+)?$/)
+  const u = m ? (m[2] ? UNIDADE[m[2].toLowerCase()] : 'mg') : null
+  return m && u ? `${m[1].replace('.', ',')} ${u}` : s
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS })
   if (req.method !== 'POST') return json({ erro: 'metodo' }, 405)
@@ -93,13 +102,20 @@ Deno.serve(async (req) => {
       const alvo = h * 60 + m
       if (ag.dia_semana === agora.dow && agora.minutos >= alvo && agora.minutos < alvo + 120) {
         const { count } = await admin.from('applications').select('id', { count: 'exact', head: true }).eq('user_id', userId).gte('aplicado_em', inicioHoje)
-        if (!count)
-          avisos.push({
-            chave: `aplicacao:${agora.dia}`,
-            titulo: 'Canetolino',
-            texto: discreto ? 'Hora do seu momento Canetolino 💜' : `Hoje é dia de aplicação (${String(ag.horario).slice(0, 5)}). Registre no app quando aplicar.`,
-            url: '/#/app/jornada',
-          })
+        if (!count) {
+          let texto = 'Hora do seu momento Canetolino 💜' // discreto: nada de remédio ou dose na tela bloqueada
+          if (!discreto) {
+            const [{ count: feitas }, { data: ult }, { data: receita }] = await Promise.all([
+              admin.from('applications').select('id', { count: 'exact', head: true }).eq('user_id', userId),
+              admin.from('applications').select('dose_texto').eq('user_id', userId).not('dose_texto', 'is', null).order('aplicado_em', { ascending: false }).limit(1),
+              admin.from('prescriptions').select('dose_texto').eq('user_id', userId).limit(1),
+            ])
+            const bruta = ult?.[0]?.dose_texto ?? receita?.[0]?.dose_texto
+            const dose = bruta && !/conforme/i.test(bruta) ? formatarDose(bruta) : ''
+            texto = `Hoje é dia da sua ${(feitas ?? 0) + 1}ª aplicação${dose ? ` (${dose})` : ''}, às ${String(ag.horario).slice(0, 5)}. Registre no app quando aplicar.`
+          }
+          avisos.push({ chave: `aplicacao:${agora.dia}`, titulo: 'Canetolino', texto, url: '/#/app/jornada' })
+        }
       }
     }
 

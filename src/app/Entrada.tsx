@@ -5,7 +5,8 @@ import Icon from '../components/Icon'
 import Mascot from '../components/Mascot'
 import { Interruptor, Logo, soltarConfete, useToast } from '../components/ui'
 import { LOCAIS, PRINCIPIOS, useStore, type Aplicacao, type Local, type Peso } from '../data/store'
-import { juntar, paraData } from './Doses'
+import { CampoDose, juntar, paraData } from './Doses'
+import { formatarDose } from '../lib/dose'
 import { DIAS_CURTOS, uid } from '../lib/datas'
 import { erroPt } from '../lib/supabase'
 
@@ -249,7 +250,7 @@ export function Onboarding() {
     nome_comercial: s.medicamento?.nome_comercial ?? '',
     dia: s.medicamento?.dia_semana ?? -1,
     horario: s.medicamento?.horario ?? '08:00',
-    dose: s.medicamento?.dose_texto ?? '',
+    dose: formatarDose(s.medicamento?.dose_texto && !/conforme/i.test(s.medicamento.dose_texto) ? s.medicamento.dose_texto : ''),
     meta_peso: s.perfil.meta_peso_kg ? String(s.perfil.meta_peso_kg) : '',
     meta_proteina: String(s.perfil.meta_proteina_g || 100),
     meta_agua: String((s.perfil.meta_agua_ml || 2000) / 1000),
@@ -288,7 +289,7 @@ export function Onboarding() {
     if (emTratamento && pesoAntes > 30) pesos.unshift({ id: uid(), kg: pesoAntes, em: juntar(d.inicio, '08:00'), retroativo: true })
     const ultimaDose: Aplicacao[] =
       emTratamento && d.ultima
-        ? [{ id: uid(), em: juntar(d.ultima, d.horario), dose: (d.dose_atual || d.dose).trim() || undefined, local: d.local_ultima || undefined, retroativo: d.ultima < hojeStr ? true : undefined }]
+        ? [{ id: uid(), em: juntar(d.ultima, d.horario), dose: formatarDose(d.dose_atual || d.dose) || undefined, local: d.local_ultima || undefined, retroativo: d.ultima < hojeStr ? true : undefined }]
         : []
     set((x) => ({
       ...x,
@@ -306,7 +307,7 @@ export function Onboarding() {
         meta_agua_ml: Math.round(Number(d.meta_agua.replace(',', '.')) * 1000),
         preferencias: d.preferencias,
       },
-      medicamento: { id: x.medicamento?.id ?? uid(), principio: d.principio, nome_comercial: d.nome_comercial, dia_semana: d.dia, horario: d.horario, dose_texto: (d.dose || d.dose_atual).trim() || 'conforme sua prescrição' },
+      medicamento: { id: x.medicamento?.id ?? uid(), principio: d.principio, nome_comercial: d.nome_comercial, dia_semana: d.dia, horario: d.horario, dose_texto: formatarDose(d.dose || d.dose_atual) || 'conforme sua prescrição' },
       pesos,
       aplicacoes: [...x.aplicacoes, ...ultimaDose],
       config: { ...x.config, notificacoesDiscretas: d.discretas, lembretesAgua: d.lembreteAgua, lembreteHora: d.horario },
@@ -382,7 +383,7 @@ export function Onboarding() {
               <div className="duas-col">
                 <div>
                   <label className="rotulo" htmlFor="dat">Dose atual</label>
-                  <input id="dat" className="campo" placeholder="Ex.: 5 mg" maxLength={40} value={d.dose_atual} onChange={(e) => up('dose_atual', e.target.value)} />
+                  <CampoDose id="dat" rotulo="Dose atual" value={d.dose_atual} onChange={(x) => up('dose_atual', x)} />
                 </div>
                 <div>
                   <label className="rotulo" htmlFor="pan">Peso antes de começar (kg)</label>
@@ -442,7 +443,7 @@ export function Onboarding() {
             </div>
             <div>
               <label className="rotulo" htmlFor="dose">Dose prescrita</label>
-              <input id="dose" className="campo" placeholder={d.dose_atual || 'Conforme a receita'} value={d.dose} onChange={(e) => up('dose', e.target.value)} />
+              <CampoDose id="dose" rotulo="Dose prescrita" value={d.dose || d.dose_atual} onChange={(x) => up('dose', x)} />
             </div>
           </div>
           <div className="aviso" style={{ marginTop: 18 }}>

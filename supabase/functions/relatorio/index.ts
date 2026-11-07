@@ -33,6 +33,15 @@ const n1 = (v: number) => v.toLocaleString('pt-BR', { minimumFractionDigits: 1, 
 const data = (iso: string, fuso = 'America/Sao_Paulo') => new Date(iso).toLocaleDateString('pt-BR', { timeZone: fuso })
 const dataHora = (iso: string, fuso = 'America/Sao_Paulo') => new Date(iso).toLocaleString('pt-BR', { timeZone: fuso, day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
 
+/** Dose sempre com unidade: "2,5" vira "2,5 mg", "5mg" vira "5 mg"; texto livre fica como está. */
+const UNIDADE: Record<string, string> = { mg: 'mg', ml: 'mL', ui: 'UI', u: 'UI', unidades: 'UI', clique: 'cliques', cliques: 'cliques' }
+function formatarDose(t?: string | null) {
+  const s = String(t ?? '').trim()
+  const m = s.match(/^(\d+(?:[.,]\d+)?)\s*([a-zA-Z]+)?$/)
+  const u = m ? (m[2] ? UNIDADE[m[2].toLowerCase()] : 'mg') : null
+  return m && u ? `${m[1].replace('.', ',')} ${u}` : s
+}
+
 class Doc {
   pdf!: PDFDocument
   pg!: PDFPage
@@ -215,14 +224,17 @@ Deno.serve(async (req) => {
     const { data: med } = await c.from('medications').select('principio_ativo, nome_comercial').eq('user_id', pacienteId).eq('status', 'ativo').limit(1)
     const { data: presc } = await c.from('prescriptions').select('dose_texto').eq('user_id', pacienteId).limit(1)
     d.titulo('Aplicações')
-    if (med?.[0]) d.texto(`${med[0].principio_ativo}${med[0].nome_comercial ? ` (${med[0].nome_comercial})` : ''}. Dose conforme a receita, como o paciente registrou: "${presc?.[0]?.dose_texto ?? 'não informada'}". O Canetolino não calcula nem sugere doses.`)
-    d.texto(`${apl.length} aplicações registradas no período.`, { cor: CINZA })
+    if (med?.[0]) d.texto(`${med[0].principio_ativo}${med[0].nome_comercial ? ` (${med[0].nome_comercial})` : ''}. Dose conforme a receita, como o paciente registrou: "${presc?.[0]?.dose_texto ? formatarDose(presc[0].dose_texto) : 'não informada'}". O Canetolino não calcula nem sugere doses.`)
+    // numeração de todo o tratamento: conta as aplicações anteriores ao período
+    const { count: anteriores } = await c.from('applications').select('id', { count: 'exact', head: true }).eq('user_id', pacienteId).lt('aplicado_em', desde)
+    const total = (anteriores ?? 0) + apl.length
+    d.texto(`${apl.length} ${apl.length === 1 ? 'aplicação registrada' : 'aplicações registradas'} no período · ${total} no tratamento até agora.`, { cor: CINZA })
     const retro = apl.filter((a) => a.retroativo).length
     if (retro) d.texto(`${retro} ${retro === 1 ? 'aplicação foi registrada' : 'aplicações foram registradas'} depois pelo paciente (histórico anotado antes do app).`, { tam: 9, cor: CINZA })
     if (apl.length)
       d.tabela(
-        [...apl].reverse().map((a) => [dataHora(a.aplicado_em), a.dose_texto ?? '-', a.local ? LOCAL[a.local] ?? a.local : 'local não informado', [a.observacao, a.retroativo ? 'registrada depois' : ''].filter(Boolean).join(' · ')]),
-        [100, 70, 130, 199],
+        apl.map((a, i) => ({ a, n: (anteriores ?? 0) + i + 1 })).reverse().map(({ a, n }) => [`${n}ª · ${dataHora(a.aplicado_em)}`, a.dose_texto ? formatarDose(a.dose_texto) : '-', a.local ? LOCAL[a.local] ?? a.local : 'local não informado', [a.observacao, a.retroativo ? 'registrada depois' : ''].filter(Boolean).join(' · ')]),
+        [118, 64, 124, 193],
       )
   }
 

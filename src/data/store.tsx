@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { DIA_MS, diasEntre, ehHoje, inicioDoDia, mesmoDia } from '../lib/datas'
 import { erroPt, sb, urlRetorno } from '../lib/supabase'
 import { cancelarAssinatura } from '../lib/pagamentos'
+import { formatarDose } from '../lib/dose'
 import { carregar, mapearShares, sincronizar } from './nuvem'
 import { apagarTodasAsFotos } from '../lib/fotos'
 
@@ -157,7 +158,12 @@ export function inicioDoTratamento(s: Estado): Date | null {
 export function doseAtual(s: Estado): string {
   const ult = [...s.aplicacoes].filter((a) => a.dose).sort((a, b) => +new Date(b.em) - +new Date(a.em))[0]
   const receita = s.medicamento?.dose_texto
-  return ult?.dose ?? (receita && !/conforme/i.test(receita) ? receita : '')
+  return formatarDose(ult?.dose ?? (receita && !/conforme/i.test(receita) ? receita : ''))
+}
+
+/** Número de cada aplicação em ordem de data (1ª, 2ª…). Recalculado sempre, então se ajusta ao incluir ou excluir doses. */
+export function numerarAplicacoes(aplicacoes: Aplicacao[]): Map<string, number> {
+  return new Map([...aplicacoes].sort((a, b) => +new Date(a.em) - +new Date(b.em)).map((a, i) => [a.id, i + 1]))
 }
 
 /** Sugestão de local: o menos usado nas últimas 4 aplicações (regra fixa, sem IA). */

@@ -6,7 +6,7 @@ import Icon from '../components/Icon'
 import Mascot from '../components/Mascot'
 import { Modal, useToast } from '../components/ui'
 import { PLANOS, precoBR, type Plano } from '../data/planos'
-import { calcularImc, TIPOS_MEDIDA, ultimoPeso, useStore, type TipoMedida } from '../data/store'
+import { calcularImc, evolucaoPeso, textoTotalPeso, TIPOS_MEDIDA, ultimoPeso, useStore, type TipoMedida } from '../data/store'
 import { dataBR, dataCurta, num, uid } from '../lib/datas'
 import { apagarFoto, atualizarFoto, enviarFotosDoAparelho, listarFotos, salvarFoto, type Angulo, type FotoEvolucao } from '../lib/fotos'
 import { hoje, juntar, paraData, paraHora } from './Doses'
@@ -63,8 +63,31 @@ function AbaPeso() {
   const [todos, setTodos] = useState(false)
   const pesos = [...s.pesos].sort((a, b) => +new Date(a.em) - +new Date(b.em))
   const recentes = [...pesos].reverse()
+  const evo = evolucaoPeso(s)
+  const mostrarTotal = s.config.mostrarTotalPeso !== false
   return (
     <>
+      {mostrarTotal && (
+        <motion.div className={`total-peso ${evo.total !== null && evo.total > 0 ? 'total-peso--neutro' : ''}`} initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }}>
+          {evo.total === null ? (
+            <p className="total-peso__vazio">Registre seu próximo peso para acompanhar sua evolução</p>
+          ) : (
+            <>
+              <b>{evo.total > 0 ? `${textoTotalPeso(evo.total)} desde o início` : `${textoTotalPeso(evo.total)} desde ${dataBR(evo.inicial!.em)}`}</b>
+              <span>
+                {num(evo.inicial!.kg)} kg em {dataBR(evo.inicial!.em)} → {num(evo.atual!.kg)} kg em {dataBR(evo.atual!.em)}
+                {evo.semana !== null && Math.abs(evo.semana) >= 0.1 ? ` · ${textoTotalPeso(evo.semana)} nesta semana` : ''}
+              </span>
+            </>
+          )}
+        </motion.div>
+      )}
+      {mostrarTotal && evo.total !== null && evo.total > 0 && (
+        <div className="dica-dose" style={{ marginBottom: 10 }}>
+          <Mascot expressao="piscando" size={40} flutuar={false} />
+          <p>O peso sobe e desce ao longo das semanas, e tudo bem. Líquidos, intestino e ciclo mudam a balança. O que conta é a sua constância, e você está aqui registrando 💜</p>
+        </div>
+      )}
       <div className="peso-seletor">
         <button className="btn-icone" onClick={() => setKg((k) => +(k - 0.1).toFixed(1))} aria-label="Diminuir 100 g">−</button>
         <motion.div key={kg} initial={{ y: -6, opacity: 0.4 }} animate={{ y: 0, opacity: 1 }} className="peso-seletor__num">
@@ -76,7 +99,7 @@ function AbaPeso() {
       <input type="range" min={40} max={200} step={0.1} value={kg} onChange={(e) => setKg(Number(e.target.value))} className="range" aria-label="Peso" />
       {(() => {
         const agora = calcularImc(kg, s.perfil.altura_cm)
-        const inicio = calcularImc(pesos[0]?.kg ?? s.perfil.peso_inicial_kg, s.perfil.altura_cm)
+        const inicio = calcularImc(evo.inicial?.kg, s.perfil.altura_cm)
         if (!agora) return <p className="legenda" style={{ textAlign: 'center' }}>Informe sua altura no cadastro para ver o IMC.</p>
         return (
           <div className="imc">
@@ -89,8 +112,8 @@ function AbaPeso() {
       {pesos.length > 1 && (
         <div className="card" style={{ marginTop: 16 }}>
           <b className="card-titulo">Histórico</b>
-          <GraficoPeso pontos={(pesos.length > 12 ? pesos.slice(-12) : pesos).map((p) => p.kg)} altura={120} />
-          <p className="legenda">Desde {dataBR(pesos[0].em)}{pesos.length > 12 ? ' · últimas 12 pesagens no gráfico' : ''}</p>
+          <GraficoPeso pontos={evo.serie} ultimaSemana={evo.semanaFinal} altura={120} />
+          <p className="legenda">Semana a semana desde {evo.inicial ? dataBR(evo.inicial.em) : dataBR(pesos[0].em)}</p>
         </div>
       )}
       <label className="rotulo" htmlFor="peso-data">Data da pesagem</label>

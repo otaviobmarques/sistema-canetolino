@@ -365,3 +365,9 @@ label.btn.is-ocupado { opacity: .6; pointer-events: none; }
 .imc > div { background: #fff; border: 1px solid var(--borda); border-radius: 16px; padding: 10px 12px; display: grid; gap: 2px; text-align: center; }
 .imc b { font-family: var(--f-titulo); font-size: 24px; color: var(--roxo); }
 .imc small { color: var(--texto-2); font-size: 12.5px; }
+.total-peso { background: linear-gradient(135deg, var(--sucesso-bg), #eefaf6); border-radius: 18px; padding: 14px 16px; margin: 2px 0 12px; display: grid; gap: 2px; }
+.total-peso b { font-family: var(--f-titulo); font-size: 26px; font-weight: 900; color: var(--sucesso); line-height: 1.1; }
+.total-peso span { color: var(--texto-2); font-size: 13.5px; }
+.total-peso--neutro { background: var(--lilas); }
+.total-peso--neutro b { color: var(--roxo); }
+.total-peso__vazio { margin: 0; color: var(--roxo); font-weight: 700; font-size: 15px; }

@@ -2,7 +2,7 @@ import { motion } from 'framer-motion'
 import { num } from '../lib/datas'
 
 /** Gráfico de linha do peso (últimas N medições). SVG puro, animado ao aparecer. */
-export default function GraficoPeso({ pontos, altura = 150 }: { pontos: number[]; altura?: number }) {
+export default function GraficoPeso({ pontos, altura = 150, ultimaSemana }: { pontos: number[]; altura?: number; ultimaSemana?: number }) {
   if (pontos.length < 2)
     return (
       <div className="grafico-vazio">
@@ -51,7 +51,7 @@ export default function GraficoPeso({ pontos, altura = 150 }: { pontos: number[]
       <text x={x0} y={y0 - 10} fontSize="12" fontWeight="700" fill="#5E5873" textAnchor="start">{num(pontos[0])}</text>
       <text x={x1} y={y1 - 12} fontSize="12.5" fontWeight="800" fill="#3B1A6E" textAnchor="end">{num(pontos[pontos.length - 1])}</text>
       <text x={px} y={H - 8} fontSize="11" fill="#5E5873">sem 1</text>
-      <text x={W - px} y={H - 8} fontSize="11" fill="#5E5873" textAnchor="end">sem {pontos.length}</text>
+      <text x={W - px} y={H - 8} fontSize="11" fill="#5E5873" textAnchor="end">sem {ultimaSemana ?? pontos.length}</text>
     </svg>
   )
 }

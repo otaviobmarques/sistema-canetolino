@@ -12,6 +12,8 @@ import { Anel, Interruptor, Modal, soltarConfete, useToast } from '../components
 import {
   aguaDoDia,
   calcularImc,
+  evolucaoPeso,
+  textoTotalPeso,
   compartilhamentoAtivo,
   doseAtual,
   inicioDoTratamento,
@@ -63,7 +65,8 @@ export function Home() {
   const agua = aguaDoDia(s)
   const peso = ultimoPeso(s)
   const imcAtual = calcularImc(peso?.kg, s.perfil.altura_cm)
-  const variacao = peso ? peso.kg - s.perfil.peso_inicial_kg : 0
+  const evo = evolucaoPeso(s)
+  const mostrarTotal = s.config.mostrarTotalPeso !== false
   const metasBatidas = prot >= s.perfil.meta_proteina_g && agua >= s.perfil.meta_agua_ml
   const [pulo, setPulo] = useState(0)
 
@@ -152,12 +155,12 @@ export function Home() {
           <div className="peso-num">{peso ? `${num(peso.kg)} kg` : '—'}</div>
           {imcAtual && <span className="legenda">IMC {num(imcAtual.valor)} · {imcAtual.faixa}</span>}
         </div>
-        {peso && Math.abs(variacao) >= 0.1 && (
-          <span className={`selo ${variacao < 0 ? 'selo--sucesso' : 'selo--lilas'}`}>
-            {variacao < 0 ? '−' : '+'}
-            {num(Math.abs(variacao))} kg desde o início
+        {mostrarTotal && evo.total !== null && Math.abs(evo.total) >= 0.1 && (
+          <span className={`selo ${evo.total < 0 ? 'selo--sucesso' : 'selo--lilas'}`}>
+            {textoTotalPeso(evo.total)} {evo.total > 0 ? 'desde o início' : `desde ${dataBR(evo.inicial!.em)}`}
           </span>
         )}
+        {mostrarTotal && peso && !evo.temEvolucao && <span className="legenda" style={{ maxWidth: 150, textAlign: 'right' }}>Registre seu próximo peso para acompanhar sua evolução</span>}
       </Cartao>
     </div>
   )
@@ -326,7 +329,8 @@ export function Radar() {
   const { s } = useStore()
   const nav = useNavigate()
   const w = useMemo(() => semana(s), [s])
-  const pesos = [...s.pesos].sort((a, b) => +new Date(a.em) - +new Date(b.em)).slice(-8)
+  const evo = useMemo(() => evolucaoPeso(s), [s])
+  const mostrarTotal = s.config.mostrarTotalPeso !== false
   const resumoRegras = useMemo(() => resumoDoDose(s), [s])
   const [resumoIA, setResumoIA] = useState<string | null>(null)
   const [escrevendo, setEscrevendo] = useState(false)
@@ -342,14 +346,14 @@ export function Radar() {
       dias_proteina_na_meta: w.diasProteinaMeta,
       dias_agua_na_meta: w.diasAguaMeta,
       treinos_forca: w.treinosForca,
-      variacao_peso_kg_semana: pesos.length > 1 ? +(pesos[pesos.length - 1].kg - pesos[Math.max(0, pesos.length - 2)].kg).toFixed(1) : null,
+      variacao_peso_kg_semana: evo.semana,
       sintomas: w.sintomasSemana.map((x) => ({ sintomas: x.sintomas, intensidade: x.intensidade, dias_apos_ultima_aplicacao: ultApl ? diasEntre(ultApl.em, x.em) : null })),
       aplicacao_registrada_na_semana: s.aplicacoes.some((a) => new Date(a.em) >= w.inicio),
       sono_medio_horas: w.sonoMedio,
       humor_medio_1a5: w.humorMedio,
       fome_media_1a5: w.fomeMedia,
     }
-  }, [s, w, pesos])
+  }, [s, w, evo])
   useEffect(() => {
     if (!podeIA) return
     let vivo = true
@@ -365,7 +369,6 @@ export function Radar() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [podeIA, chaveDia])
   const resumo = resumoIA ?? resumoRegras
-  const variacao = pesos.length > 1 ? pesos[pesos.length - 1].kg - pesos[0].kg : 0
   const intensidade = w.sintomasSemana.length ? Math.max(...w.sintomasSemana.map((x) => x.intensidade)) : 0
   const diasSint = new Set(w.sintomasSemana.map((x) => inicioDoDia(x.em).getTime())).size
   const ativo = s.compartilhamentos.find(compartilhamentoAtivo)
@@ -404,10 +407,18 @@ export function Radar() {
 
       <Cartao i={1} className="card" >
         <div className="jornada-topo">
-          <b>Peso nas últimas {Math.max(pesos.length, 1)} semanas</b>
-          {pesos.length > 1 && <b style={{ color: variacao <= 0 ? 'var(--sucesso)' : 'var(--violeta)' }}>{variacao <= 0 ? '−' : '+'}{num(Math.abs(variacao))} kg</b>}
+          <div>
+            <b>Peso desde o início</b>
+            {evo.inicial && <span className="legenda" style={{ display: 'block' }}>desde {dataBR(evo.inicial.em)}</span>}
+          </div>
+          {mostrarTotal && evo.total !== null && (
+            <div style={{ textAlign: 'right' }}>
+              <b style={{ color: evo.total <= 0 ? 'var(--sucesso)' : 'var(--violeta)' }}>{textoTotalPeso(evo.total)}</b>
+              {evo.semana !== null && Math.abs(evo.semana) >= 0.1 && <span className="legenda" style={{ display: 'block' }}>{textoTotalPeso(evo.semana)} nesta semana</span>}
+            </div>
+          )}
         </div>
-        <GraficoPeso pontos={pesos.map((p) => p.kg)} />
+        <GraficoPeso pontos={evo.serie} ultimaSemana={evo.semanaFinal} />
       </Cartao>
 
       <div className="grade-2" style={{ marginTop: 12 }}>
@@ -612,6 +623,10 @@ export function Perfil() {
         <div className="linha-config">
           <div><b>Registro com IA</b><span>Foto e voz. Desligado, você registra à mão</span></div>
           <Interruptor ligado={s.config.ia} onChange={(v) => cfg('ia', v)} rotulo="Registro com IA" />
+        </div>
+        <div className="linha-config">
+          <div><b>Mostrar quanto já perdi</b><span>O total de peso desde o início, no Início, na Evolução e no Radar</span></div>
+          <Interruptor ligado={s.config.mostrarTotalPeso !== false} onChange={(v) => cfg('mostrarTotalPeso', v)} rotulo="Mostrar quanto já perdi" />
         </div>
         <div className="linha-config">
           <div><b>Fotos de evolução</b><span>Guardadas na nuvem, em área privada. Nunca são compartilhadas com profissionais</span></div>

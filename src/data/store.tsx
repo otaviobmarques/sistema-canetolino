@@ -106,7 +106,7 @@ export type Estado = {
   compartilhamentos: Compartilhamento[]
   consentimentos: Consentimento[]
   auditoria: Auditoria[]
-  config: { notificacoesDiscretas: boolean; ia: boolean; fotosLocal: boolean; lembreteHora: string; lembretesAgua: boolean }
+  config: { notificacoesDiscretas: boolean; ia: boolean; fotosLocal: boolean; lembreteHora: string; lembretesAgua: boolean; mostrarTotalPeso?: boolean }
 }
 
 /* ============================ Estados iniciais ============================ */
@@ -558,3 +558,40 @@ export function calcularImc(kg?: number | null, alturaCm?: number | null): { val
     valor < 18.5 ? 'abaixo do peso' : valor < 25 ? 'peso adequado' : valor < 30 ? 'sobrepeso' : valor < 35 ? 'obesidade grau I' : valor < 40 ? 'obesidade grau II' : 'obesidade grau III'
   return { valor: Math.round(valor * 10) / 10, faixa }
 }
+
+/* ============================ Evolução do peso ============================ */
+export type PontoPeso = { kg: number; em: string }
+/**
+ * Um cálculo só para Início, Minha evolução e Radar.
+ * Peso inicial: o do cadastro (na data de início do tratamento) ou a pesagem mais antiga, o que for primeiro.
+ * Total = peso mais recente − peso inicial. Recalcula sozinho ao salvar, excluir ou incluir pesagens antigas.
+ */
+export function evolucaoPeso(s: Estado) {
+  const pesos = [...s.pesos].sort((a, b) => +new Date(a.em) - +new Date(b.em))
+  let inicial: PontoPeso | null = pesos[0] ? { kg: pesos[0].kg, em: pesos[0].em } : null
+  if (s.perfil.peso_inicial_kg > 0) {
+    const dataCadastro = s.perfil.inicio_tratamento ? new Date(`${s.perfil.inicio_tratamento}T12:00:00`).toISOString() : null
+    if (!inicial) inicial = { kg: s.perfil.peso_inicial_kg, em: dataCadastro ?? new Date().toISOString() }
+    else if (dataCadastro && +new Date(dataCadastro) < +new Date(inicial.em) - 12 * 3600000) inicial = { kg: s.perfil.peso_inicial_kg, em: dataCadastro }
+  }
+  const atual: PontoPeso | null = pesos.length ? { kg: pesos[pesos.length - 1].kg, em: pesos[pesos.length - 1].em } : null
+  const temEvolucao = !!(inicial && atual && +new Date(atual.em) > +new Date(inicial.em))
+  const total = temEvolucao ? Math.round((atual!.kg - inicial!.kg) * 10) / 10 : null
+  // variação da semana: o peso mais recente contra a última pesagem de pelo menos 6 dias antes
+  const ref = atual ? [...pesos].reverse().find((p) => +new Date(atual.em) - +new Date(p.em) >= 6 * DIA_MS) : undefined
+  const semana = atual && ref ? Math.round((atual.kg - ref.kg) * 10) / 10 : null
+  // série semanal desde o início: semana 1 = peso inicial; nas outras, a última pesagem da semana
+  const porSemana = new Map<number, number>()
+  if (inicial) {
+    porSemana.set(1, inicial.kg)
+    for (const p of pesos) {
+      const n = Math.floor((+new Date(p.em) - +new Date(inicial.em)) / (7 * DIA_MS)) + 1
+      if (n > 1) porSemana.set(n, p.kg)
+    }
+  }
+  const semanas = [...porSemana.keys()].sort((a, b) => a - b)
+  return { inicial, atual, total, semana, temEvolucao, serie: semanas.map((n) => porSemana.get(n)!), semanaFinal: semanas[semanas.length - 1] ?? 1 }
+}
+
+/** Texto do total: "−11,5 kg" ou "+1,2 kg". */
+export const textoTotalPeso = (v: number) => `${v < 0 ? '−' : v > 0 ? '+' : ''}${Math.abs(v).toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} kg`

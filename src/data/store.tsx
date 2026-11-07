@@ -4,7 +4,7 @@ import { erroPt, sb, urlRetorno } from '../lib/supabase'
 import { cancelarAssinatura } from '../lib/pagamentos'
 import { formatarDose } from '../lib/dose'
 import { carregar, mapearShares, sincronizar } from './nuvem'
-import { apagarTodasAsFotos } from '../lib/fotos'
+import { apagarTodasAsFotos, enviarFotosDoAparelho } from '../lib/fotos'
 
 /* ============================ Tipos (espelham o modelo de dados do descritivo) ============================ */
 export type Origem = 'manual' | 'ia_estimativa' | 'integracao'
@@ -130,7 +130,7 @@ export const vazio = (): Estado => ({
   compartilhamentos: [],
   consentimentos: [],
   auditoria: [],
-  config: { notificacoesDiscretas: true, ia: true, fotosLocal: true, lembreteHora: '08:00', lembretesAgua: true },
+  config: { notificacoesDiscretas: true, ia: true, fotosLocal: false, lembreteHora: '08:00', lembretesAgua: true },
 })
 
 /* ============================ Regras de negócio ============================ */
@@ -385,9 +385,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       }
       const base: Estado = { ...vazio(), sessao: true, userId, perfil: { ...vazio().perfil, email } }
       const remoto = await carregar(c, userId, base)
-      const pronto = { ...remoto, sessao: true, userId }
-      salvo.current = pronto
-      gravar(CHAVE_SALVO, pronto)
+      const doServidor = { ...remoto, sessao: true, userId }
+      // fotos de evolução agora ficam sempre na nuvem: a configuração antiga é corrigida na próxima sincronização
+      const pronto = { ...doServidor, config: { ...remoto.config, fotosLocal: false } }
+      // fotos que ficaram só neste aparelho sobem para a nuvem (em segundo plano)
+      enviarFotosDoAparelho(userId).catch(() => {})
+      salvo.current = doServidor
+      gravar(CHAVE_SALVO, doServidor)
       setS(pronto)
     },
     [c],

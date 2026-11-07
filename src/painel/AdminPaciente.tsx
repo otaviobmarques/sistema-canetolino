@@ -180,7 +180,7 @@ export default function AdminPaciente({ c }: { c: SupabaseClient }) {
         ) : (
           <p className="p-cinza">Nenhuma foto na nuvem.</p>
         )}
-        {cfg.fotosLocal !== false && <p className="p-cinza" style={{ marginTop: 8 }}>Este paciente guarda as fotos só no próprio aparelho (padrão do app): elas não chegam ao servidor e não podem ser vistas aqui.</p>}
+        {cfg.fotosLocal !== false && <p className="p-cinza" style={{ marginTop: 8 }}>Este paciente tinha fotos guardadas só no aparelho (opção antiga). Elas sobem para a nuvem e aparecem aqui na próxima vez que ele abrir o app.</p>}
       </Secao>
 
       <Secao titulo="Assinatura, consentimentos e acessos">

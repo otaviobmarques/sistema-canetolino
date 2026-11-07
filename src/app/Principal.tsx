@@ -611,8 +611,7 @@ export function Perfil() {
           <Interruptor ligado={s.config.ia} onChange={(v) => cfg('ia', v)} rotulo="Registro com IA" />
         </div>
         <div className="linha-config">
-          <div><b>Fotos só no aparelho</b><span>Fotos de evolução não vão para a nuvem</span></div>
-          <Interruptor ligado={s.config.fotosLocal} onChange={(v) => cfg('fotosLocal', v)} rotulo="Fotos só no aparelho" />
+          <div><b>Fotos de evolução</b><span>Guardadas na nuvem, em área privada. Nunca são compartilhadas com profissionais</span></div>
         </div>
       </Cartao>
 

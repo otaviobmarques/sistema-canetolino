@@ -3,9 +3,9 @@ import { sb } from './supabase'
 import { uid } from './datas'
 
 /**
- * Fotos de evolução.
- * - "Fotos só no aparelho" ligado (padrão, seção 8): ficam no IndexedDB deste aparelho.
- * - Desligado: vão para o Storage privado `evolucao/<user_id>/`, com links temporários.
+ * Fotos de evolução: sempre no Storage privado `evolucao/<user_id>/`, com links temporários.
+ * Fotos antigas que ficaram só no aparelho (opção que existia antes) são enviadas para a nuvem
+ * na primeira vez que o app abre logado (`enviarFotosDoAparelho`).
  * Fotos de evolução nunca entram no compartilhamento com profissionais.
  */
 export type Angulo = 'frente' | 'lado' | 'costas'
@@ -60,6 +60,28 @@ export async function salvarFoto(userId: string, arquivo: Blob, angulo: Angulo, 
   if (up.error) throw up.error
   const { error } = await c.from('progress_photos').insert({ id, user_id: userId, caminho, angulo, registrado_em: em })
   if (error) throw error
+}
+
+/** Envia para a nuvem as fotos que ficaram só neste aparelho e apaga a cópia local de cada uma que subiu. */
+export async function enviarFotosDoAparelho(userId: string): Promise<number> {
+  let locais: Local[] = []
+  try {
+    locais = ((await tx('readonly', (s) => s.getAll())) as Local[]).filter((f) => f.userId === userId)
+  } catch {
+    return 0 // sem IndexedDB
+  }
+  const c = sb('app')
+  let n = 0
+  for (const f of locais) {
+    const caminho = `${userId}/${f.id}.jpg`
+    const up = await c.storage.from('evolucao').upload(caminho, f.blob, { contentType: 'image/jpeg' })
+    if (up.error && !/exists|duplicate/i.test(up.error.message)) continue // já enviada numa tentativa anterior: segue
+    const { error } = await c.from('progress_photos').upsert({ id: f.id, user_id: userId, caminho, angulo: f.angulo, registrado_em: f.em })
+    if (error) continue
+    await tx('readwrite', (s) => s.delete(f.id))
+    n++
+  }
+  return n
 }
 
 /** Corrige a data (e o ângulo) de uma foto já salva. */

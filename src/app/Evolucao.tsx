@@ -8,7 +8,7 @@ import { Modal, useToast } from '../components/ui'
 import { PLANOS, precoBR, type Plano } from '../data/planos'
 import { TIPOS_MEDIDA, ultimoPeso, useStore, type TipoMedida } from '../data/store'
 import { dataBR, dataCurta, num, uid } from '../lib/datas'
-import { apagarFoto, atualizarFoto, listarFotos, salvarFoto, type Angulo, type FotoEvolucao } from '../lib/fotos'
+import { apagarFoto, atualizarFoto, enviarFotosDoAparelho, listarFotos, salvarFoto, type Angulo, type FotoEvolucao } from '../lib/fotos'
 import { hoje, juntar, paraData, paraHora } from './Doses'
 import { dataDaFoto } from '../lib/exif'
 import { assinar, cancelarAssinatura, cpfValido, minhaAssinatura } from '../lib/pagamentos'
@@ -198,7 +198,7 @@ function AbaFotos() {
   const [escolhidas, setEscolhidas] = useState<Escolhida[]>([])
   const [progresso, setProgresso] = useState('')
   const [edita, setEdita] = useState<{ data: string; angulo: Angulo } | null>(null)
-  const local = s.config.fotosLocal
+  const local = false // fotos de evolução sempre na nuvem, em área privada
   const inicio = s.perfil.inicio_tratamento
 
   // galeria: lê a data de cada foto no próprio aparelho antes de qualquer envio
@@ -241,7 +241,12 @@ function AbaFotos() {
 
   const carregar = useCallback(() => {
     if (!s.userId) return
-    listarFotos(s.userId).then(setFotos).catch(() => setFotos([]))
+    const uid_ = s.userId
+    enviarFotosDoAparelho(uid_)
+      .catch(() => 0)
+      .then(() => listarFotos(uid_))
+      .then(setFotos)
+      .catch(() => setFotos([]))
   }, [s.userId])
   useEffect(() => {
     carregar()
@@ -255,7 +260,7 @@ function AbaFotos() {
     <>
       <div className="aviso" style={{ marginTop: 4 }}>
         <Icon name="lock" size={18} />
-        <span>{local ? 'Suas fotos ficam só neste aparelho e não vão para a nuvem.' : 'Suas fotos ficam guardadas na nuvem, em área privada só sua.'} Elas nunca são compartilhadas com profissionais. Mude em Perfil → Privacidade.</span>
+        <span>Suas fotos ficam guardadas na nuvem, em área privada, e aparecem em qualquer aparelho em que você entrar. Elas nunca são compartilhadas com profissionais.</span>
       </div>
       <div className="chips" style={{ marginTop: 14, flexWrap: 'nowrap' }}>
         {(['frente', 'lado', 'costas'] as Angulo[]).map((a) => (
@@ -379,7 +384,7 @@ function AbaFotos() {
         </div>
         <div className="aviso" style={{ marginTop: 12 }}>
           <Icon name="lock" size={18} />
-          <span>{local ? 'As fotos ficam só neste aparelho.' : 'As fotos vão para a sua área privada na nuvem.'} Nunca são compartilhadas com profissionais.</span>
+          <span>As fotos vão para a sua área privada na nuvem. Nunca são compartilhadas com profissionais.</span>
         </div>
         <div className="duas-col" style={{ marginTop: 14 }}>
           <button className="btn btn--contorno" disabled={enviando} onClick={fecharEscolhidas}>Cancelar</button>

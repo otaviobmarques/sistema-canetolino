@@ -45,11 +45,11 @@ export async function listarFotos(userId: string): Promise<FotoEvolucao[]> {
   return [...locais, ...nuvem].sort((a, b) => +new Date(a.em) - +new Date(b.em))
 }
 
-export async function salvarFoto(userId: string, arquivo: Blob, angulo: Angulo, soNoAparelho: boolean) {
+/** Salva a foto (reduzida, sem os metadados do arquivo original). `em` é a data em que a foto foi tirada. */
+export async function salvarFoto(userId: string, arquivo: Blob, angulo: Angulo, soNoAparelho: boolean, em = new Date().toISOString()) {
   const { base64 } = await reduzirFoto(arquivo, 1280)
   const blob = await (await fetch(`data:image/jpeg;base64,${base64}`)).blob()
   const id = uid()
-  const em = new Date().toISOString()
   if (soNoAparelho) {
     await tx('readwrite', (s) => s.put({ id, userId, blob, angulo, em } satisfies Local))
     return
@@ -59,6 +59,17 @@ export async function salvarFoto(userId: string, arquivo: Blob, angulo: Angulo, 
   const up = await c.storage.from('evolucao').upload(caminho, blob, { contentType: 'image/jpeg' })
   if (up.error) throw up.error
   const { error } = await c.from('progress_photos').insert({ id, user_id: userId, caminho, angulo, registrado_em: em })
+  if (error) throw error
+}
+
+/** Corrige a data (e o ângulo) de uma foto já salva. */
+export async function atualizarFoto(f: FotoEvolucao, mudanca: { em: string; angulo: Angulo }) {
+  if (f.onde === 'aparelho') {
+    const atual = (await tx('readonly', (s) => s.get(f.id))) as Local | undefined
+    if (atual) await tx('readwrite', (s) => s.put({ ...atual, ...mudanca }))
+    return
+  }
+  const { error } = await sb('app').from('progress_photos').update({ registrado_em: mudanca.em, angulo: mudanca.angulo }).eq('id', f.id)
   if (error) throw error
 }
 

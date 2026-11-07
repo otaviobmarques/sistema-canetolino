@@ -8,8 +8,9 @@ import { Modal, useToast } from '../components/ui'
 import { PLANOS, precoBR, type Plano } from '../data/planos'
 import { TIPOS_MEDIDA, ultimoPeso, useStore, type TipoMedida } from '../data/store'
 import { dataBR, dataCurta, num, uid } from '../lib/datas'
-import { apagarFoto, listarFotos, salvarFoto, type Angulo, type FotoEvolucao } from '../lib/fotos'
-import { hoje, juntar } from './Doses'
+import { apagarFoto, atualizarFoto, listarFotos, salvarFoto, type Angulo, type FotoEvolucao } from '../lib/fotos'
+import { hoje, juntar, paraData, paraHora } from './Doses'
+import { dataDaFoto } from '../lib/exif'
 import { assinar, cancelarAssinatura, cpfValido, minhaAssinatura } from '../lib/pagamentos'
 import { erroPt, sb } from '../lib/supabase'
 
@@ -183,6 +184,8 @@ function AbaMedidas() {
   )
 }
 
+type Escolhida = { chave: string; arquivo: File; url: string; data: string; hora: string; origem: 'exif' | 'nome' | null; angulo: Angulo }
+
 function AbaFotos() {
   const { s } = useStore()
   const toast = useToast()
@@ -192,7 +195,49 @@ function AbaFotos() {
   const [comparar, setComparar] = useState(false)
   const [ver, setVer] = useState<FotoEvolucao | null>(null)
   const [corte, setCorte] = useState(50)
+  const [escolhidas, setEscolhidas] = useState<Escolhida[]>([])
+  const [progresso, setProgresso] = useState('')
+  const [edita, setEdita] = useState<{ data: string; angulo: Angulo } | null>(null)
   const local = s.config.fotosLocal
+  const inicio = s.perfil.inicio_tratamento
+
+  // galeria: lê a data de cada foto no próprio aparelho antes de qualquer envio
+  const escolherDaGaleria = async (arquivos: File[]) => {
+    const lidas = await Promise.all(
+      arquivos.slice(0, 20).map(async (f) => {
+        const d = await dataDaFoto(f)
+        return { chave: uid(), arquivo: f, url: URL.createObjectURL(f), data: d ? paraData(d.iso) : '', hora: d ? paraHora(d.iso) : '12:00', origem: d?.origem ?? null, angulo } satisfies Escolhida
+      }),
+    )
+    if (arquivos.length > 20) toast('Dá para escolher até 20 fotos por vez', 'info')
+    setEscolhidas(lidas)
+  }
+  const fecharEscolhidas = () => {
+    escolhidas.forEach((e) => URL.revokeObjectURL(e.url))
+    setEscolhidas([])
+  }
+  const salvarEscolhidas = async () => {
+    if (!s.userId) return
+    setEnviando(true)
+    let ok = 0
+    try {
+      for (const [i, e] of escolhidas.entries()) {
+        setProgresso(`${i + 1} de ${escolhidas.length}`)
+        await salvarFoto(s.userId, e.arquivo, e.angulo, local, juntar(e.data, e.hora))
+        ok++
+      }
+      toast(ok === 1 ? 'Foto salva na linha do tempo' : `${ok} fotos salvas na linha do tempo`)
+      fecharEscolhidas()
+    } catch (er) {
+      toast(`${ok ? `${ok} salvas. ` : ''}${erroPt(er)}`, 'info')
+      setEscolhidas((l) => l.slice(ok))
+    } finally {
+      setEnviando(false)
+      setProgresso('')
+      carregar()
+    }
+  }
+  const faltaData = escolhidas.some((e) => !e.data || e.data > hoje())
 
   const carregar = useCallback(() => {
     if (!s.userId) return
@@ -230,9 +275,10 @@ function AbaFotos() {
       ) : (
         <div className="grade-fotos" style={{ marginTop: 12 }}>
           {doAngulo.map((f) => (
-            <button key={f.id} className="foto-evol" onClick={() => setVer(f)}>
+            <button key={f.id} className="foto-evol" onClick={() => { setVer(f); setEdita(null) }}>
               <img src={f.url} alt={`Foto de ${f.angulo} em ${dataBR(f.em)}`} />
               <span>{dataCurta(f.em)}</span>
+              {inicio && paraData(f.em) < inicio && <i className="foto-evol__antes">antes</i>}
             </button>
           ))}
         </div>
@@ -244,13 +290,14 @@ function AbaFotos() {
         </button>
       )}
 
-      <div className="rodape-acao">
-        <label className={`btn btn--primario btn--bloco ${enviando ? 'is-ocupado' : ''}`} style={{ cursor: 'pointer' }}>
+      <div className="rodape-acao fotos-acoes">
+        <label className={`btn btn--primario ${enviando ? 'is-ocupado' : ''}`} style={{ cursor: 'pointer' }}>
           <input
             type="file"
             accept="image/*"
             capture="user"
             className="sr-only"
+            aria-label="Tirar foto agora"
             disabled={enviando}
             onChange={async (e) => {
               const f = e.target.files?.[0]
@@ -268,9 +315,79 @@ function AbaFotos() {
               }
             }}
           />
-          <Icon name="camera" size={20} /> {enviando ? 'Salvando…' : `Adicionar foto de ${angulo}`}
+          <Icon name="camera" size={20} /> {enviando && !escolhidas.length ? 'Salvando…' : 'Tirar foto agora'}
+        </label>
+        <label className="btn btn--contorno" style={{ cursor: 'pointer' }}>
+          <input
+            type="file"
+            accept="image/*"
+            multiple
+            className="sr-only"
+            aria-label="Escolher da galeria"
+            disabled={enviando}
+            onChange={(e) => {
+              const lista = [...(e.target.files ?? [])]
+              e.target.value = ''
+              if (lista.length) escolherDaGaleria(lista)
+            }}
+          />
+          <Icon name="upload" size={20} /> Escolher da galeria
         </label>
       </div>
+      <p className="legenda" style={{ textAlign: 'center', marginTop: 8 }}>Fotos de {angulo} · da galeria, pode escolher várias de uma vez</p>
+
+      <Modal aberto={escolhidas.length > 0} onFechar={() => !enviando && fecharEscolhidas()} largura={560}>
+        <h3>Conferir as fotos</h3>
+        <p className="legenda">Confira quando cada foto foi tirada: é por essa data que ela entra na linha do tempo e no antes e depois.</p>
+        <div className="fotos-conferir">
+          {escolhidas.map((e) => (
+            <div key={e.chave} className="foto-conferir">
+              <img src={e.url} alt="Foto escolhida" />
+              <div>
+                <label className="rotulo" htmlFor={`fd-${e.chave}`} style={{ marginTop: 0 }}>Tirada em</label>
+                <input
+                  id={`fd-${e.chave}`}
+                  className={`campo ${!e.data ? 'campo--atencao' : ''}`}
+                  type="date"
+                  max={hoje()}
+                  value={e.data}
+                  onChange={(ev) => setEscolhidas((l) => l.map((x) => (x.chave === e.chave ? { ...x, data: ev.target.value, origem: null } : x)))}
+                />
+                <small className={`legenda ${!e.data ? 'texto-alerta' : ''}`}>
+                  {!e.data ? 'Esta foto não tem data. Informe quando foi tirada.' : e.origem === 'exif' ? 'Data lida da própria foto' : e.origem === 'nome' ? 'Data tirada do nome do arquivo: confira' : 'Data informada por você'}
+                  {e.data && inicio && e.data < inicio ? ' · antes de começar o tratamento' : ''}
+                </small>
+                <div className="chips" style={{ marginTop: 8, flexWrap: 'nowrap' }}>
+                  {(['frente', 'lado', 'costas'] as Angulo[]).map((a) => (
+                    <button key={a} type="button" className={`chip chip--quadrado chip--mini ${e.angulo === a ? 'is-on' : ''}`} onClick={() => setEscolhidas((l) => l.map((x) => (x.chave === e.chave ? { ...x, angulo: a } : x)))}>
+                      {a[0].toUpperCase() + a.slice(1)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <button
+                type="button"
+                className="btn-icone btn-icone--peq"
+                aria-label="Tirar esta foto"
+                disabled={enviando}
+                onClick={() => setEscolhidas((l) => { URL.revokeObjectURL(e.url); return l.filter((x) => x.chave !== e.chave) })}
+              >
+                <Icon name="close" size={16} />
+              </button>
+            </div>
+          ))}
+        </div>
+        <div className="aviso" style={{ marginTop: 12 }}>
+          <Icon name="lock" size={18} />
+          <span>{local ? 'As fotos ficam só neste aparelho.' : 'As fotos vão para a sua área privada na nuvem.'} Nunca são compartilhadas com profissionais.</span>
+        </div>
+        <div className="duas-col" style={{ marginTop: 14 }}>
+          <button className="btn btn--contorno" disabled={enviando} onClick={fecharEscolhidas}>Cancelar</button>
+          <button className="btn btn--primario" disabled={enviando || faltaData} onClick={salvarEscolhidas}>
+            {enviando ? `Salvando ${progresso}…` : escolhidas.length === 1 ? 'Salvar foto' : `Salvar ${escolhidas.length} fotos`}
+          </button>
+        </div>
+      </Modal>
 
       <Modal aberto={comparar} onFechar={() => setComparar(false)} largura={520}>
         {antes && depois && (
@@ -292,7 +409,44 @@ function AbaFotos() {
         {ver && (
           <>
             <img src={ver.url} alt="Foto de evolução" style={{ width: '100%', borderRadius: 16 }} />
-            <p className="legenda" style={{ marginTop: 8 }}>{dataBR(ver.em)} · {ver.angulo} · {ver.onde === 'aparelho' ? 'guardada neste aparelho' : 'guardada na nuvem'}</p>
+            {edita ? (
+              <>
+                <label className="rotulo" htmlFor="ver-data">Tirada em</label>
+                <input id="ver-data" className="campo" type="date" max={hoje()} value={edita.data} onChange={(e) => setEdita({ ...edita, data: e.target.value })} />
+                <div className="chips" style={{ marginTop: 10, flexWrap: 'nowrap' }}>
+                  {(['frente', 'lado', 'costas'] as Angulo[]).map((a) => (
+                    <button key={a} type="button" className={`chip chip--quadrado ${edita.angulo === a ? 'is-on' : ''}`} onClick={() => setEdita({ ...edita, angulo: a })}>
+                      {a[0].toUpperCase() + a.slice(1)}
+                    </button>
+                  ))}
+                </div>
+                <div className="duas-col" style={{ marginTop: 14 }}>
+                  <button className="btn btn--contorno" onClick={() => setEdita(null)}>Cancelar</button>
+                  <button
+                    className="btn btn--primario"
+                    disabled={!edita.data || edita.data > hoje()}
+                    onClick={async () => {
+                      try {
+                        await atualizarFoto(ver, { em: juntar(edita.data, paraHora(ver.em)), angulo: edita.angulo })
+                        toast('Data da foto atualizada')
+                        setVer(null)
+                        setEdita(null)
+                        carregar()
+                      } catch (er) {
+                        toast(erroPt(er), 'info')
+                      }
+                    }}
+                  >
+                    Salvar
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+            <p className="legenda" style={{ marginTop: 8 }}>
+              {dataBR(ver.em)} · {ver.angulo} · {ver.onde === 'aparelho' ? 'guardada neste aparelho' : 'guardada na nuvem'}{' '}
+              <button className="link-acao" onClick={() => setEdita({ data: paraData(ver.em), angulo: ver.angulo })}>Alterar data</button>
+            </p>
             <div className="duas-col" style={{ marginTop: 14 }}>
               <button className="btn btn--contorno" onClick={() => setVer(null)}>Fechar</button>
               <button
@@ -307,6 +461,8 @@ function AbaFotos() {
                 Apagar
               </button>
             </div>
+              </>
+            )}
           </>
         )}
       </Modal>

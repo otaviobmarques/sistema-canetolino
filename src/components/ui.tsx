@@ -1,5 +1,6 @@
 import { AnimatePresence, motion, animate, useInView } from 'framer-motion'
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import Icon from './Icon'
 
 /* ============ Toasts ============ */
@@ -64,7 +65,8 @@ export function Modal({ aberto, onFechar, children, largura }: { aberto: boolean
     window.addEventListener('keydown', k)
     return () => window.removeEventListener('keydown', k)
   }, [aberto, onFechar])
-  return (
+  // vai direto para o <body>: assim nenhuma animação ou transformação da tela por trás "prende" a janela
+  return createPortal(
     <AnimatePresence>
       {aberto && (
         <motion.div className="modal-fundo" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onFechar}>
@@ -83,7 +85,8 @@ export function Modal({ aberto, onFechar, children, largura }: { aberto: boolean
           </motion.div>
         </motion.div>
       )}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body,
   )
 }
 

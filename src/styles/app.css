@@ -337,3 +337,17 @@ label.btn.is-ocupado { opacity: .6; pointer-events: none; }
 .assinatura-domma img { height: 26px; width: auto; display: block; }
 .assinatura-domma--lateral { flex-direction: row; justify-content: flex-start; margin: 4px 0 0; gap: 10px; }
 .assinatura-domma--lateral img { height: 22px; }
+
+/* fotos de evolução: câmera ou galeria, com conferência da data */
+.fotos-acoes { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.fotos-acoes .btn { min-width: 0; padding-left: 8px; padding-right: 8px; font-size: 14px; gap: 6px; }
+.fotos-conferir { display: grid; gap: 10px; margin-top: 12px; max-height: min(52vh, 460px); overflow-y: auto; overscroll-behavior: contain; padding-right: 2px; }
+.foto-conferir { display: grid; grid-template-columns: 72px minmax(0, 1fr) auto; gap: 12px; align-items: start; padding: 10px; border: 1px solid var(--borda); border-radius: 16px; background: #fff; }
+.foto-conferir img { width: 72px; aspect-ratio: 3/4; object-fit: cover; border-radius: 12px; background: var(--lilas); }
+.foto-conferir .campo { min-height: 44px; padding-left: 10px; padding-right: 8px; font-size: 15px; }
+.foto-conferir small { display: block; margin-top: 4px; font-size: 12.5px; }
+.campo--atencao { border-color: #e7a59d; background: #fff8f7; }
+.chip--mini { min-height: 34px; font-size: 12.5px; padding: 0 2px; }
+.foto-conferir .chips { gap: 4px; }
+.foto-evol__antes { position: absolute; top: 6px; left: 6px; background: var(--roxo); color: #fff; font-style: normal; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 99px; }
+.link-acao { border: 0; background: none; padding: 0; color: var(--violeta); font: inherit; font-weight: 700; text-decoration: underline; cursor: pointer; }

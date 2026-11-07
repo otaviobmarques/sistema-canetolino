@@ -1,4 +1,5 @@
 import BotaoInstalar from '../components/Instalar'
+import BotaoMinhaFicha from './MinhaFicha'
 import { CampoDose, HistoricoDoses, ModalDose } from './Doses'
 import { formatarDose } from '../lib/dose'
 import { AnimatePresence, motion } from 'framer-motion'
@@ -449,6 +450,7 @@ export function Radar() {
         <Icon name="download" size={20} /> {baixando ? 'Gerando PDF…' : 'Baixar meu relatório (30 dias)'}
         {s.perfil.plano !== 'premium' && <span className="selo selo--roxo" style={{ padding: '1px 8px' }}>Premium</span>}
       </button>
+      <BotaoMinhaFicha style={{ marginTop: 10 }} />
       <button className="btn btn--contorno btn--bloco" style={{ marginTop: 10 }} onClick={() => nav('/app/perfil/compartilhar')}>
         <Icon name="upload" size={20} /> Enviar relatório {ativo ? `à ${ativo.profissao.toLowerCase()}` : 'a um profissional'}
       </button>
@@ -613,6 +615,10 @@ export function Perfil() {
       <h2 className="secao-titulo">Lembretes</h2>
       <CartaoLembretes />
       <BotaoInstalar className="btn btn--lilas btn--bloco" style={{ marginTop: 10 }} texto="Instalar o Canetolino neste aparelho" />
+
+      <h2 className="secao-titulo">Minha ficha</h2>
+      <p className="legenda" style={{ marginTop: -4 }}>Tudo o que você registrou, organizado para imprimir ou salvar em PDF.</p>
+      <BotaoMinhaFicha className="btn btn--primario btn--bloco" style={{ marginTop: 8 }} />
 
       <h2 className="secao-titulo">Privacidade</h2>
       <Cartao i={1} className="card lista-config">

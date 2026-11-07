@@ -4,15 +4,32 @@ import Mascot from '../components/Mascot'
 import { calcularImc, evolucaoPeso, LOCAL_LONGO, numerarAplicacoes, textoTotalPeso, TIPOS_MEDIDA, type Estado } from '../data/store'
 import { dataBR, dataHoraBR, DIAS_LONGOS, num } from '../lib/datas'
 import { formatarDose, ordinal } from '../lib/dose'
+import '../styles/ficha-impressa.css'
 
 /* Ficha do paciente para imprimir (A4), com a cara do Canetolino.
    Fica escondida na tela; ao imprimir, só ela aparece (classe `imprimindo` no <body>).
    Linhas de tabela e blocos nunca quebram entre páginas. */
 
 type Linha = Record<string, unknown>
-type Props = { s: Estado; perfil: Linha; fotos: { id: string; url: string; angulo: string; em: string }[]; extra: { consent: Linha[]; acessos: Linha[]; assinaturas: Linha[]; rotulos: Linha[] } }
 
-export default function FichaImpressa({ s, perfil, fotos, extra }: Props) {
+/** Abre a impressão só da ficha: espera as fotos carregarem, dá nome ao arquivo e limpa tudo ao terminar. */
+export async function imprimirFicha(nome: string) {
+  await Promise.all([...document.querySelectorAll<HTMLImageElement>('.impressao img')].map((img) => (img.complete ? null : new Promise((ok) => { img.onload = img.onerror = ok }))))
+  const original = document.title
+  document.title = `Ficha ${nome || 'paciente'} - Canetolino`
+  document.body.classList.add('imprimindo')
+  const fim = () => {
+    document.body.classList.remove('imprimindo')
+    document.title = original
+    window.removeEventListener('afterprint', fim)
+  }
+  window.addEventListener('afterprint', fim)
+  await new Promise((ok) => setTimeout(ok, 50))
+  window.print()
+}
+type Props = { origem?: 'admin' | 'paciente'; s: Estado; perfil: Linha; fotos: { id: string; url: string; angulo: string; em: string }[]; extra: { consent: Linha[]; acessos: Linha[]; assinaturas: Linha[]; rotulos: Linha[] } }
+
+export default function FichaImpressa({ s, perfil, fotos, extra, origem = 'admin' }: Props) {
   const est: Estado = { ...s, perfil: { ...s.perfil, peso_inicial_kg: Number(perfil.peso_inicial_kg ?? 0), inicio_tratamento: (perfil.inicio_tratamento as string) ?? '', altura_cm: Number(perfil.altura_cm ?? 0) } }
   const evo = evolucaoPeso(est)
   const altura = Number(perfil.altura_cm ?? 0)
@@ -36,7 +53,7 @@ export default function FichaImpressa({ s, perfil, fotos, extra }: Props) {
           <div className="imp-logo">canetolino</div>
           <h1>Ficha do paciente</h1>
           <p>{t('nome')} · {t('email')}</p>
-          <p className="imp-gerado">Gerada em {dataHoraBR(new Date())} · documento com dados de saúde, uso restrito (LGPD)</p>
+          <p className="imp-gerado">Gerada em {dataHoraBR(new Date())}{origem === 'paciente' ? ' pelo próprio paciente' : ''} · documento com dados de saúde, uso restrito (LGPD)</p>
         </div>
         <div className="imp-dose"><Mascot expressao="feliz" size={92} flutuar={false} /></div>
       </header>

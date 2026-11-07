@@ -3,11 +3,11 @@
 //   os nutrientes vêm SEMPRE da tabela `foods` (TACO/TBCA). Nada é gravado aqui.
 // - resumo_semanal: texto curto do Dose a partir de indicadores agregados (sem nome,
 //   e-mail ou documento), com filtro que bloqueia dose, diagnóstico e causalidade.
-// O app nunca fala direto com a Anthropic: a chave fica só no segredo ANTHROPIC_API_KEY.
+// O app nunca fala direto com a Anthropic: a chave fica só no servidor (segredo ou tabela `segredos`).
 import Anthropic from 'npm:@anthropic-ai/sdk@1.6.0'
 import { createClient } from 'npm:@supabase/supabase-js@2.119.0'
 
-const MODELO = 'claude-opus-5-5'
+const MODELO = 'claude-haiku-5-5' // rápido e barato; sem recuperação automática no servidor, o app cai para a busca manual
 const VERSAO_PROMPT = 'ia-v1'
 const COTA_BASICO = 30 // refeições por IA por mês no plano Básico
 
@@ -93,7 +93,8 @@ Deno.serve(async (req) => {
   if (eu || !u.user) return json({ erro: 'nao_autenticado' }, 401)
   const userId = u.user.id
 
-  const chave = Deno.env.get('ANTHROPIC_API_KEY')
+  // chave: segredo da função ou, se não houver, a tabela `segredos` (só o servidor lê)
+  const chave = Deno.env.get('ANTHROPIC_API_KEY') ?? (await admin.from('segredos').select('valor').eq('nome', 'ANTHROPIC_API_KEY').maybeSingle()).data?.valor
   if (!chave) return json({ erro: 'ia_indisponivel' }, 503)
 
   let corpo: { acao?: string; imagem?: string; media_type?: string; texto?: string; semana?: string; indicadores?: Record<string, unknown> }
@@ -107,7 +108,7 @@ Deno.serve(async (req) => {
   if ((perfil?.config as { ia?: boolean } | null)?.ia === false) return json({ erro: 'ia_desligada' }, 403)
 
   const claude = new Anthropic({ apiKey: chave })
-  const registrarUso = (tipo: string, r: Anthropic.Beta.BetaMessage) =>
+  const registrarUso = (tipo: string, r: Anthropic.Message) =>
     admin.from('ai_usage').insert({ user_id: userId, tipo, modelo: r.model, tokens_entrada: r.usage.input_tokens, tokens_saida: r.usage.output_tokens })
 
   try {
@@ -124,7 +125,7 @@ Deno.serve(async (req) => {
       const { data: foods } = await admin.from('foods').select('*').order('id')
       const catalogo = (foods ?? []) as Food[]
 
-      let conteudo: Anthropic.Beta.BetaContentBlockParam[]
+      let conteudo: Anthropic.ContentBlockParam[]
       if (corpo.acao === 'refeicao_foto') {
         const tipo = corpo.media_type ?? 'image/jpeg'
         if (!corpo.imagem || !['image/jpeg', 'image/png', 'image/webp'].includes(tipo)) return json({ erro: 'imagem_invalida' }, 400)
@@ -139,17 +140,16 @@ Deno.serve(async (req) => {
         conteudo = [{ type: 'text', text: `Identifique os alimentos desta refeição descrita pela pessoa: "${texto}"` }]
       }
 
-      const r = await claude.beta.messages.create({
+      const r = await claude.messages.create({
         model: MODELO,
         max_tokens: 4000,
-        betas: ['server-side-fallback-2026-07-01'],
-        fallbacks: 'default',
         output_config: { effort: 'low', format: { type: 'json_schema', schema: ESQUEMA_REFEICAO(catalogo.map((f) => f.id)) } },
         system: [{ type: 'text', text: SISTEMA_REFEICAO(catalogo), cache_control: { type: 'ephemeral' } }],
         messages: [{ role: 'user', content: conteudo }],
       })
       await registrarUso(corpo.acao, r)
       if (r.stop_reason === 'refusal') return json({ erro: 'recusado' }, 422)
+      if (r.stop_reason === 'max_tokens') return json({ erro: 'ia_falhou' }, 502)
       const txt = r.content.find((b) => b.type === 'text')
       const saida = JSON.parse(txt && txt.type === 'text' ? txt.text : '{"itens":[]}') as { itens: ItemIA[] }
 
@@ -173,17 +173,15 @@ Deno.serve(async (req) => {
 
       // só números agregados vão ao modelo: nada de nome, e-mail ou documento
       const ind = corpo.indicadores
-      const r = await claude.beta.messages.create({
+      const r = await claude.messages.create({
         model: MODELO,
         max_tokens: 2000,
-        betas: ['server-side-fallback-2026-07-01'],
-        fallbacks: 'default',
         output_config: { effort: 'low' },
         system: [{ type: 'text', text: SISTEMA_RESUMO, cache_control: { type: 'ephemeral' } }],
         messages: [{ role: 'user', content: `Indicadores da semana (JSON):\n${JSON.stringify(ind).slice(0, 4000)}` }],
       })
       await registrarUso('resumo_semanal', r)
-      if (r.stop_reason === 'refusal') return json({ erro: 'recusado' }, 422)
+      if (r.stop_reason === 'refusal' || r.stop_reason === 'max_tokens') return json({ bloqueado: true })
       const txt = r.content.find((b) => b.type === 'text')
       const resumo = (txt && txt.type === 'text' ? txt.text : '').trim()
       if (!resumo || resumo.length > 600 || BLOQUEIO.test(resumo)) return json({ bloqueado: true })

@@ -44,8 +44,8 @@ A função de servidor `supabase/functions/ia` é a única que fala com a IA; o 
 - **Refeição por foto, voz ou texto:** o app reduz a foto (até 1024 px) e envia. O modelo devolve só nomes, preparo e porção, em JSON com formato fixo; o servidor busca cada item na tabela `foods` (TACO/TBCA) e calcula proteína e energia. Itens sem correspondência voltam para busca manual. Nada é salvo sem a pessoa confirmar.
 - **Resumo do Radar:** só indicadores agregados vão ao modelo (sem nome, e-mail ou documento). O texto passa por um filtro que bloqueia dose, diagnóstico e causalidade; se bloquear, o app mostra o resumo por regras. Fica guardado em `weekly_reports` (um por dia).
 - **Cota:** 30 refeições por IA por mês no Básico; ilimitado no Premium (`ai_usage`).
-- **Modelo:** `claude-opus-5-5`, esforço baixo, com recuperação automática no servidor se o modelo recusar (`fallbacks: "default"`).
-- **Chave:** segredo `ANTHROPIC_API_KEY` em Supabase → Edge Functions → Secrets. Sem ele, o app avisa que a IA está indisponível e segue com a busca manual.
+- **Modelo:** `claude-haiku-5-5`, esforço baixo. Custo medido: cerca de US$ 0,0002 por análise. Se o modelo recusar ou falhar, o app cai para a busca manual (ou para o resumo por regras).
+- **Chave:** a função lê `ANTHROPIC_API_KEY` do segredo da função ou, se não houver, da tabela `segredos` (sem acesso pela API; só o servidor lê). Para trocar a chave: `update segredos set valor = '...' where nome = 'ANTHROPIC_API_KEY'` no SQL Editor do Supabase.
 
 ## Planos (paciente)
 

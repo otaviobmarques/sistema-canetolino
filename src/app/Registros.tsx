@@ -4,7 +4,8 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import Icon, { type IconName } from '../components/Icon'
 import Mascot from '../components/Mascot'
 import { Modal, soltarConfete, useToast } from '../components/ui'
-import { FOODS, PRATOS_FOTO, reconhecerTexto, VERSAO_TABELA } from '../data/foods'
+import { FOODS, VERSAO_TABELA } from '../data/foods'
+import { ErroIA, refeicaoPorFoto, refeicaoPorTexto, type ItemIA } from '../lib/ia'
 import { criarItem, SINTOMAS, SINTOMAS_ALERTA, ultimoPeso, useStore, type ItemRefeicao } from '../data/store'
 import { diasEntre, horaBR, num, uid } from '../lib/datas'
 
@@ -142,19 +143,35 @@ export function Refeicao() {
 
   useEffect(() => () => clearTimeout(timer.current), [])
 
-  const analisar = (ids: string[]) => {
+  const [faltaram, setFaltaram] = useState<string[]>([])
+  const [erroIA, setErroIA] = useState('')
+  const pedido = useRef(0)
+
+  // a IA só sugere; nada é salvo até a pessoa conferir e tocar em "Salvar refeição"
+  const analisar = async (chamada: Promise<{ itens: ItemIA[] }>) => {
+    const n = ++pedido.current
     setEtapa('analisando')
-    timer.current = window.setTimeout(() => {
-      if (!ids.length) return setEtapa('nao-reconheci')
-      setItens(ids.map((id) => ({ ...criarItem(id, undefined, 'ia_estimativa'), uid: uid() })))
+    setErroIA('')
+    try {
+      const { itens: sugeridos } = await chamada
+      if (n !== pedido.current) return // cancelado
+      const achados = sugeridos.filter((i) => !i.nao_encontrado)
+      setFaltaram(sugeridos.filter((i) => i.nao_encontrado).map((i) => i.nome))
+      if (!sugeridos.length) return setEtapa('nao-reconheci')
+      setItens(achados.map((i) => ({ foodId: i.food_id, nome: i.nome, porcao_g: i.porcao_g, porcao_texto: i.porcao_texto, proteina_g: i.proteina_g, energia_kcal: i.energia_kcal, origem: 'ia_estimativa' as const, uid: uid() })))
       setRemovidos([])
       setEtapa('revisao')
-    }, 1900)
+    } catch (e) {
+      if (n !== pedido.current) return
+      setErroIA(e instanceof ErroIA ? e.message : 'Algo deu errado com a IA. Tente de novo.')
+      setEtapa('nao-reconheci')
+    }
   }
 
   const onFoto = (f?: File) => {
-    if (f) setFoto(URL.createObjectURL(f))
-    analisar(PRATOS_FOTO[f ? (f.size % PRATOS_FOTO.length) : 0])
+    if (!f) return
+    setFoto(URL.createObjectURL(f))
+    analisar(refeicaoPorFoto(f))
   }
 
   const ouvir = () => {
@@ -192,7 +209,7 @@ export function Refeicao() {
       ...x,
       refeicoes: [
         ...x.refeicoes,
-        { id: uid(), tipo: tipoPorHora(hora), em: hora.toISOString(), origem, versao_tabela: VERSAO_TABELA, itens: itens.map(({ uid: _u, ...i }) => i), foto: x.config.fotosLocal ? undefined : foto ?? undefined },
+        { id: uid(), tipo: tipoPorHora(hora), em: hora.toISOString(), origem, versao_tabela: VERSAO_TABELA, itens: itens.map(({ uid: _u, ...i }) => i) },
       ],
     }))
     soltarConfete({ x: e.clientX, y: e.clientY }, 50)
@@ -227,9 +244,7 @@ export function Refeicao() {
                   <b>Tirar ou escolher foto</b>
                   <span className="legenda">A foto é reduzida antes do envio</span>
                 </label>
-                <button className="btn btn--lilas btn--bloco" style={{ marginTop: 12 }} onClick={() => onFoto()}>
-                  Usar foto de exemplo
-                </button>
+                <p className="legenda" style={{ textAlign: 'center', marginTop: 10 }}>A foto é analisada pela IA e não fica guardada.</p>
               </>
             )}
             {(modo === 'voz' || modo === 'texto') && (
@@ -245,7 +260,7 @@ export function Refeicao() {
                 )}
                 <label className="rotulo" htmlFor="txt">{modo === 'voz' ? 'Transcrição' : 'O que você comeu?'}</label>
                 <textarea id="txt" className="campo" placeholder="Almocei arroz, feijão e um filé de frango" value={texto} onChange={(e) => setTexto(e.target.value)} />
-                <button className="btn btn--primario btn--bloco" style={{ marginTop: 14 }} disabled={texto.trim().length < 3} onClick={() => analisar(reconhecerTexto(texto))}>
+                <button className="btn btn--primario btn--bloco" style={{ marginTop: 14 }} disabled={texto.trim().length < 3} onClick={() => analisar(refeicaoPorTexto(texto))}>
                   Organizar com o Dose
                 </button>
               </>
@@ -263,7 +278,7 @@ export function Refeicao() {
                 <div key={i} className="skeleton" style={{ height: 60, animationDelay: `${i * 0.15}s` }} />
               ))}
             </div>
-            <button className="btn btn--contorno" style={{ marginTop: 16 }} onClick={() => { clearTimeout(timer.current); setEtapa('captura') }}>
+            <button className="btn btn--contorno" style={{ marginTop: 16 }} onClick={() => { pedido.current++; setEtapa('captura') }}>
               Cancelar
             </button>
           </motion.div>
@@ -271,9 +286,9 @@ export function Refeicao() {
 
         {etapa === 'nao-reconheci' && (
           <motion.div key="nr" className="analisando" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-            <Mascot expressao="alerta" size={100} />
-            <b>Hmm, não reconheci os alimentos</b>
-            <p className="legenda">Tente descrever de outro jeito, ou busque cada item manualmente.</p>
+            <Mascot expressao={erroIA ? 'dormindo' : 'alerta'} size={100} />
+            <b>{erroIA ? 'A IA não respondeu agora' : 'Hmm, não reconheci os alimentos'}</b>
+            <p className="legenda">{erroIA || 'Tente descrever de outro jeito, ou busque cada item manualmente.'}</p>
             <div className="duas-col" style={{ width: '100%', marginTop: 12 }}>
               <button className="btn btn--contorno" onClick={() => setEtapa('captura')}>Tentar de novo</button>
               <button className="btn btn--primario" onClick={() => setEtapa('revisao')}>Buscar alimento</button>
@@ -331,6 +346,13 @@ export function Refeicao() {
               </AnimatePresence>
             </div>
 
+            {faltaram.length > 0 && (
+              <div className="aviso" style={{ marginTop: 12 }}>
+                <span>
+                  Não achei na tabela nutricional: <b>{faltaram.join(', ')}</b>. Busque abaixo um alimento parecido para incluir.
+                </span>
+              </div>
+            )}
             <div className="busca-alimento">
               <Icon name="search" size={18} />
               <input className="campo" placeholder="Incluir alimento (ex.: ovo, whey…)" value={busca} onChange={(e) => setBusca(e.target.value)} aria-label="Buscar alimento" />

@@ -257,3 +257,5 @@
 .plano .lista-premium li { align-items: flex-start; font-weight: 500; }
 .plano .lista-premium svg { flex: none; margin-top: 2px; }
 @media (max-width: 420px) { .planos { grid-template-columns: 1fr; } }
+
+.resumo-dose__escrevendo { animation: m-pulse 1.4s ease-in-out infinite; color: #d8cbf7 !important; }

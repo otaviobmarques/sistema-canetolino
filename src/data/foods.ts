@@ -35,20 +35,3 @@ export const FOODS: Food[] = [
 ]
 
 export const foodById = (id: string) => FOODS.find((f) => f.id === id)!
-
-/** Simula o que o modelo de IA devolveria: só nomes e porções. Os nutrientes vêm da base. */
-export function reconhecerTexto(texto: string): string[] {
-  const t = texto.toLowerCase()
-  const achados: string[] = []
-  for (const f of FOODS) {
-    if (f.sinonimos.some((s) => t.includes(s)) && !achados.includes(f.id)) achados.push(f.id)
-  }
-  return achados
-}
-
-export const PRATOS_FOTO: string[][] = [
-  ['frango', 'feijao', 'arroz', 'salada'],
-  ['ovo', 'pao', 'queijo'],
-  ['peixe', 'batata', 'salada'],
-  ['patinho', 'arroz', 'feijao'],
-]

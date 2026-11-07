@@ -271,6 +271,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const rodando = useRef(false)
   const timer = useRef<number>(0)
   const ignorarStorage = useRef(false)
+  const carregando = useRef<Promise<void> | null>(null)
   atual.current = s
   const c = sb('app')
 
@@ -351,13 +352,22 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     [c],
   )
 
+  /** Carrega a conta uma vez só, mesmo que a tela e o aviso de sessão peçam ao mesmo tempo. */
+  const entrarUmaVez = useCallback(
+    (userId: string, email: string) => {
+      if (!carregando.current) carregando.current = aoEntrar(userId, email).finally(() => (carregando.current = null))
+      return carregando.current
+    },
+    [aoEntrar],
+  )
+
   useEffect(() => {
     const { data } = c.auth.onAuthStateChange((evento, sessao) => {
       // não chamar o Supabase de dentro do callback (evita travar o cliente)
       setTimeout(() => {
         if (sessao?.user && (evento === 'SIGNED_IN' || evento === 'INITIAL_SESSION')) {
           const ja = atual.current.userId === sessao.user.id
-          if (!ja || evento === 'INITIAL_SESSION') aoEntrar(sessao.user.id, sessao.user.email ?? '').catch((e) => setSync({ pendente: false, erro: erroPt(e) }))
+          if (!ja || evento === 'INITIAL_SESSION') entrarUmaVez(sessao.user.id, sessao.user.email ?? '').catch((e) => setSync({ pendente: false, erro: erroPt(e) }))
         }
         if (evento === 'SIGNED_OUT' || (evento === 'INITIAL_SESSION' && !sessao && atual.current.userId)) {
           salvo.current = null
@@ -367,7 +377,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       }, 0)
     })
     return () => data.subscription.unsubscribe()
-  }, [c, aoEntrar])
+  }, [c, entrarUmaVez])
 
   /** Relê compartilhamentos, consentimentos e auditoria (geridos pelo servidor). */
   const recarregarShares = useCallback(async () => {
@@ -410,9 +420,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     async (email: string, senha: string) => {
       const { data, error } = await c.auth.signInWithPassword({ email: email.trim(), password: senha })
       if (error) throw error
-      await aoEntrar(data.user.id, data.user.email ?? email)
+      await entrarUmaVez(data.user.id, data.user.email ?? email)
     },
-    [c, aoEntrar],
+    [c, entrarUmaVez],
   )
 
   const criarConta = useCallback(
@@ -420,12 +430,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const { data, error } = await c.auth.signUp({ email: email.trim(), password: senha, options: { data: { nome, tipo: 'paciente' }, emailRedirectTo: urlRetorno('app') } })
       if (error) throw error
       if (data.session && data.user) {
-        await aoEntrar(data.user.id, data.user.email ?? email)
+        await entrarUmaVez(data.user.id, data.user.email ?? email)
         return 'ok' as const
       }
       return 'confirmar' as const
     },
-    [c, aoEntrar],
+    [c, entrarUmaVez],
   )
 
   const recuperarSenha = useCallback(async (email: string) => {

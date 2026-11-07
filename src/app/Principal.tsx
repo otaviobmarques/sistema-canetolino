@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from 'framer-motion'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import GraficoPeso from '../components/GraficoPeso'
 import Icon from '../components/Icon'
@@ -22,6 +22,7 @@ import {
   type Local,
 } from '../data/store'
 import { PLANOS, precoBR, type Plano } from '../data/planos'
+import { resumoSemanal } from '../lib/ia'
 import { erroPt, sb } from '../lib/supabase'
 import { dataBR, dataCurta, dataDiaMes, dataHoraBR, DIA_MS, diasEntre, DIAS_LONGOS, inicioDoDia, mesAno, num, saudacaoData, uid } from '../lib/datas'
 
@@ -291,8 +292,42 @@ export function Radar() {
   const { s } = useStore()
   const nav = useNavigate()
   const w = useMemo(() => semana(s), [s])
-  const resumo = useMemo(() => resumoDoDose(s), [s])
   const pesos = [...s.pesos].sort((a, b) => +new Date(a.em) - +new Date(b.em)).slice(-8)
+  const resumoRegras = useMemo(() => resumoDoDose(s), [s])
+  const [resumoIA, setResumoIA] = useState<string | null>(null)
+  const [escrevendo, setEscrevendo] = useState(false)
+  const chaveDia = new Date(w.fim).toISOString().slice(0, 10)
+  const podeIA = !!resumoRegras && s.config.ia
+  // indicadores agregados, sem nome, e-mail ou documento
+  const indicadores = useMemo(() => {
+    const ultApl = [...s.aplicacoes].sort((a, b) => +new Date(b.em) - +new Date(a.em))[0]
+    return {
+      dias_com_registro: w.diasComRegistro,
+      meta_proteina_g: s.perfil.meta_proteina_g,
+      proteina_media_g_dia: w.proteinaMedia || null,
+      dias_proteina_na_meta: w.diasProteinaMeta,
+      dias_agua_na_meta: w.diasAguaMeta,
+      treinos_forca: w.treinosForca,
+      variacao_peso_kg_semana: pesos.length > 1 ? +(pesos[pesos.length - 1].kg - pesos[Math.max(0, pesos.length - 2)].kg).toFixed(1) : null,
+      sintomas: w.sintomasSemana.map((x) => ({ sintomas: x.sintomas, intensidade: x.intensidade, dias_apos_ultima_aplicacao: ultApl ? diasEntre(ultApl.em, x.em) : null })),
+      aplicacao_registrada_na_semana: s.aplicacoes.some((a) => new Date(a.em) >= w.inicio),
+    }
+  }, [s, w, pesos])
+  useEffect(() => {
+    if (!podeIA) return
+    let vivo = true
+    setEscrevendo(true)
+    resumoSemanal(chaveDia, indicadores)
+      .then((r) => vivo && setResumoIA(r.bloqueado ? null : r.resumo ?? null))
+      .catch(() => vivo && setResumoIA(null))
+      .finally(() => vivo && setEscrevendo(false))
+    return () => {
+      vivo = false
+    }
+    // gera uma vez por dia; o servidor guarda e devolve o mesmo texto
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [podeIA, chaveDia])
+  const resumo = resumoIA ?? resumoRegras
   const variacao = pesos.length > 1 ? pesos[pesos.length - 1].kg - pesos[0].kg : 0
   const intensidade = w.sintomasSemana.length ? Math.max(...w.sintomasSemana.map((x) => x.intensidade)) : 0
   const diasSint = new Set(w.sintomasSemana.map((x) => inicioDoDia(x.em).getTime())).size
@@ -310,8 +345,12 @@ export function Radar() {
           <Mascot expressao="feliz" size={46} flutuar={false} />
           <div>
             <span className="sobretitulo">Resumo do Dose</span>
-            <p className="resumo-dose__txt">{resumo}</p>
-            <p className="resumo-dose__aviso">Resumo gerado a partir dos seus registros. Não é avaliação médica.</p>
+            {escrevendo && !resumoIA ? (
+              <p className="resumo-dose__txt resumo-dose__escrevendo">O Dose está escrevendo seu resumo…</p>
+            ) : (
+              <motion.p key={resumo} className="resumo-dose__txt" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>{resumo}</motion.p>
+            )}
+            <p className="resumo-dose__aviso">{resumoIA ? 'Resumo escrito pela IA' : 'Resumo gerado'} a partir dos seus registros. Não é avaliação médica.</p>
           </div>
         </Cartao>
       ) : (

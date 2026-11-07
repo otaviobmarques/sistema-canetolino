@@ -37,6 +37,16 @@ Projeto **canetolino** na organização Domma Tecnologia, região **sa-east-1 (S
 1. **Authentication → URL Configuration:** Site URL `https://sistema-canetolino.vercel.app` e, em Redirect URLs, `https://sistema-canetolino.vercel.app/**` (os links de confirmação e de nova senha voltam para cá).
 2. **Authentication → SMTP:** o envio padrão do Supabase só manda e-mail para membros da organização. Para pacientes e profissionais receberem a confirmação, configure um SMTP próprio (Resend, por exemplo).
 
+## IA (Claude, da Anthropic)
+
+A função de servidor `supabase/functions/ia` é a única que fala com a IA; o app nunca vê a chave.
+
+- **Refeição por foto, voz ou texto:** o app reduz a foto (até 1024 px) e envia. O modelo devolve só nomes, preparo e porção, em JSON com formato fixo; o servidor busca cada item na tabela `foods` (TACO/TBCA) e calcula proteína e energia. Itens sem correspondência voltam para busca manual. Nada é salvo sem a pessoa confirmar.
+- **Resumo do Radar:** só indicadores agregados vão ao modelo (sem nome, e-mail ou documento). O texto passa por um filtro que bloqueia dose, diagnóstico e causalidade; se bloquear, o app mostra o resumo por regras. Fica guardado em `weekly_reports` (um por dia).
+- **Cota:** 30 refeições por IA por mês no Básico; ilimitado no Premium (`ai_usage`).
+- **Modelo:** `claude-opus-5-5`, esforço baixo, com recuperação automática no servidor se o modelo recusar (`fallbacks: "default"`).
+- **Chave:** segredo `ANTHROPIC_API_KEY` em Supabase → Edge Functions → Secrets. Sem ele, o app avisa que a IA está indisponível e segue com a busca manual.
+
 ## Planos (paciente)
 
 Sem plano gratuito. Valores em `src/data/planos.ts`: **Básico R$ 9,90/mês** (R$ 99/ano) e **Premium R$ 19,90/mês** (R$ 199/ano). A assinatura será feita pelas lojas no app nativo.
@@ -62,7 +72,7 @@ Sem plano gratuito. Valores em `src/data/planos.ts`: **Básico R$ 9,90/mês** (R
 
 ## Próximos passos
 
-- **IA de verdade:** reconhecimento de refeição por foto/voz/texto e resumo semanal do Radar (hoje são regras fixas no app).
+- **IA:** ampliar a tabela `foods` com a TACO/TBCA completa e medir a precisão com um conjunto de fotos de refeições brasileiras.
 - **Telas que faltam:** busca de alimentos completa, medidas e fotos de evolução, assinatura dos planos.
 - **App nativo** (Flutter ou React Native) para as lojas, com notificações push.
 - Revisão clínica da lista de sintomas de alerta, revisão jurídica (LGPD) e avaliação do enquadramento na Anvisa.

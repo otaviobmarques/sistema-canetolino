@@ -9,6 +9,7 @@ import { dataBR } from '../lib/datas'
 import { erroPt } from '../lib/supabase'
 import { AuthPainel, usePainel } from './Auth'
 import { Bloqueado, Cabecalho, PainelLayout } from './Layout'
+import Pagamentos from './Pagamentos'
 
 /* Painel da equipe Canetolino: verificação de profissionais e números gerais.
    Não mostra dados de saúde de pacientes (LGPD): só contagens. */
@@ -21,6 +22,7 @@ const ITENS = [
   { to: '/admin', nome: 'Visão geral', icone: 'grid' as const, end: true },
   { to: '/admin/profissionais', nome: 'Profissionais', icone: 'shield' as const },
   { to: '/admin/clinicas', nome: 'Clínicas', icone: 'users' as const },
+  { to: '/admin/pagamentos', nome: 'Pagamentos', icone: 'wallet' as const },
 ]
 
 // preço do Claude Haiku 5.5 (US$ por milhão de tokens, prompts até 100 mil tokens)
@@ -67,6 +69,7 @@ export default function AdminPainel() {
         <Route index element={<Visao c={c} />} />
         <Route path="profissionais" element={<Profissionais c={c} />} />
         <Route path="clinicas" element={<Clinicas c={c} />} />
+        <Route path="pagamentos" element={<Pagamentos c={c} />} />
         <Route path="*" element={<Navigate to="/admin" replace />} />
       </Routes>
     </PainelLayout>

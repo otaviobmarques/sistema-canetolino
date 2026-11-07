@@ -9,6 +9,7 @@ import { PLANOS, precoBR, type Plano } from '../data/planos'
 import { TIPOS_MEDIDA, ultimoPeso, useStore, type TipoMedida } from '../data/store'
 import { dataBR, dataCurta, num, uid } from '../lib/datas'
 import { apagarFoto, listarFotos, salvarFoto, type Angulo, type FotoEvolucao } from '../lib/fotos'
+import { assinar, cancelarAssinatura, cpfValido, minhaAssinatura } from '../lib/pagamentos'
 import { erroPt, sb } from '../lib/supabase'
 
 type Aba = 'peso' | 'medidas' | 'fotos'
@@ -276,15 +277,32 @@ function AbaFotos() {
 }
 
 /* ======================= Planos e assinatura ======================= */
+const STATUS_TXT = { ativa: 'ativa', atrasada: 'pagamento atrasado', pendente: 'aguardando pagamento', cancelada: 'cancelada' } as const
+
 export function Planos() {
   const nav = useNavigate()
-  const { s } = useStore()
+  const { set } = useStore()
+  const toast = useToast()
+  const [params] = useSearchParams()
   const [anual, setAnual] = useState(false)
   const [usoIA, setUsoIA] = useState<number | null>(null)
-  const [aviso, setAviso] = useState(false)
-  const atual = s.perfil.plano
+  const [info, setInfo] = useState<Awaited<ReturnType<typeof minhaAssinatura>> | null>(null)
+  const [escolha, setEscolha] = useState<Plano | null>(null)
+  const [pedirCpf, setPedirCpf] = useState(false)
+  const [cpf, setCpf] = useState('')
+  const [indo, setIndo] = useState(false)
+  const [confirmarCancelar, setConfirmarCancelar] = useState(false)
+  const voltouDoPagamento = params.get('pagamento') === 'ok'
+
+  const atualizar = useCallback(async () => {
+    const r = await minhaAssinatura(sb('app'))
+    setInfo(r)
+    set((x) => (x.perfil.plano === r.plano ? x : { ...x, perfil: { ...x.perfil, plano: r.plano } }))
+    return r
+  }, [set])
 
   useEffect(() => {
+    atualizar().catch(() => {})
     const inicio = new Date()
     inicio.setDate(1)
     inicio.setHours(0, 0, 0, 0)
@@ -294,7 +312,52 @@ export function Planos() {
       .in('tipo', ['refeicao_foto', 'refeicao_texto'])
       .gte('em', inicio.toISOString())
       .then(({ count }) => setUsoIA(count ?? 0))
-  }, [])
+  }, [atualizar])
+
+  // de volta da página de pagamento: confere a confirmação por alguns minutos
+  useEffect(() => {
+    if (!info?.pendente && !voltouDoPagamento) return
+    let n = 0
+    const t = setInterval(async () => {
+      n++
+      const r = await atualizar().catch(() => null)
+      if (r?.ativa && !r.pendente) {
+        clearInterval(t)
+        toast(`Assinatura ${PLANOS[r.ativa.plano].nome} ativa. Obrigado!`, 'ok')
+      }
+      if (n > 40) clearInterval(t)
+    }, 5000)
+    return () => clearInterval(t)
+  }, [info?.pendente?.id, voltouDoPagamento, atualizar, toast]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const ir = async (plano: Plano, comCpf?: string) => {
+    setIndo(true)
+    setEscolha(plano)
+    try {
+      const url = await assinar(sb('app'), plano, anual ? 'anual' : 'mensal', comCpf)
+      window.location.href = url
+    } catch (e) {
+      setIndo(false)
+      if ((e as { codigo?: string }).codigo === 'cpf') return setPedirCpf(true)
+      toast(erroPt(e), 'info')
+    }
+  }
+
+  const cancelar = async () => {
+    setIndo(true)
+    try {
+      await cancelarAssinatura(sb('app'))
+      await atualizar()
+      toast('Assinatura cancelada', 'info')
+    } catch (e) {
+      toast(erroPt(e), 'info')
+    }
+    setIndo(false)
+    setConfirmarCancelar(false)
+  }
+
+  const ativa = info?.ativa ?? null
+  const atual = ativa?.plano ?? null
 
   return (
     <div className="tela">
@@ -304,6 +367,26 @@ export function Planos() {
         </button>
         <h1 className="titulo-tela" style={{ fontSize: 26 }}>Planos</h1>
       </div>
+
+      {ativa && (
+        <div className="card">
+          <div className="jornada-topo">
+            <b>Sua assinatura</b>
+            <span className={`selo ${ativa.status === 'ativa' ? 'selo--sucesso' : 'selo--lilas'}`}>{STATUS_TXT[ativa.status]}</span>
+          </div>
+          <p style={{ margin: '6px 0 0' }}>
+            {PLANOS[ativa.plano].nome} {ativa.periodo} · {precoBR(Number(ativa.valor))}/{ativa.periodo === 'anual' ? 'ano' : 'mês'}
+          </p>
+          {ativa.proximo_vencimento && <p className="legenda">Próxima cobrança em {dataBR(ativa.proximo_vencimento)}</p>}
+          <button className="btn btn--fantasma btn--pequeno" style={{ marginTop: 8 }} onClick={() => setConfirmarCancelar(true)}>Cancelar assinatura</button>
+        </div>
+      )}
+      {!ativa && info?.pendente && (
+        <div className="card">
+          <b>Aguardando a confirmação do pagamento</b>
+          <p className="legenda">Pix e cartão confirmam em instantes; boleto pode levar até 3 dias úteis. Esta tela atualiza sozinha.</p>
+        </div>
+      )}
 
       {atual === 'basico' && usoIA !== null && (
         <div className="card uso-ia">
@@ -326,6 +409,7 @@ export function Planos() {
       <div className="planos-tela">
         {(Object.keys(PLANOS) as Plano[]).map((k, i) => {
           const p = PLANOS[k]
+          const ehAtual = atual === k && ativa?.periodo === (anual ? 'anual' : 'mensal')
           return (
             <motion.div key={k} className={`plano-card ${k === 'premium' ? 'plano-card--destaque' : ''}`} initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.08 }}>
               {k === 'premium' && <span className="plano-card__fita">Mais completo</span>}
@@ -343,22 +427,31 @@ export function Planos() {
                   <li key={t}><Icon name="check" size={16} /> {t}</li>
                 ))}
               </ul>
-              {atual !== k && (
-                <button className={`btn btn--bloco ${k === 'premium' ? 'btn--turquesa' : 'btn--contorno'}`} onClick={() => setAviso(true)}>
-                  {k === 'premium' ? 'Assinar Premium' : 'Mudar para o Básico'}
+              {!ehAtual && (
+                <button className={`btn btn--bloco ${k === 'premium' ? 'btn--turquesa' : 'btn--contorno'}`} disabled={indo || info === null} onClick={() => ir(k)}>
+                  {indo && escolha === k ? 'Abrindo o pagamento…' : atual ? `Mudar para o ${p.nome}` : `Assinar ${p.nome}`}
                 </button>
               )}
             </motion.div>
           )
         })}
       </div>
-      <p className="legenda" style={{ textAlign: 'center', marginTop: 12 }}>Cobrança pela App Store ou Google Play. Cancele quando quiser.</p>
+      <p className="legenda" style={{ textAlign: 'center', marginTop: 12 }}>Pagamento seguro por Pix, boleto ou cartão. Ao trocar de plano, o anterior é cancelado quando o novo for pago. Cancele quando quiser.</p>
 
-      <Modal aberto={aviso} onFechar={() => setAviso(false)}>
-        <div style={{ display: 'flex', justifyContent: 'center' }}><Mascot expressao="piscando" size={80} /></div>
-        <h3 style={{ textAlign: 'center' }}>A assinatura chega com o app nas lojas</h3>
-        <p className="legenda" style={{ textAlign: 'center', fontSize: 14.5 }}>A troca de plano será feita pela App Store ou pelo Google Play, direto no seu celular. Avisamos você assim que estiver disponível.</p>
-        <button className="btn btn--primario btn--bloco" style={{ marginTop: 16 }} onClick={() => setAviso(false)}>Entendi</button>
+      <Modal aberto={pedirCpf} onFechar={() => setPedirCpf(false)}>
+        <h3 style={{ textAlign: 'center' }}>Qual é o seu CPF?</h3>
+        <p className="legenda" style={{ textAlign: 'center', fontSize: 14.5 }}>Ele vai só para a emissão da cobrança (exigência da nota e do Pix). O Canetolino não guarda o seu CPF.</p>
+        <input className="campo" inputMode="numeric" autoComplete="off" placeholder="000.000.000-00" value={cpf} onChange={(e) => setCpf(e.target.value)} style={{ marginTop: 12 }} />
+        {cpf.replace(/\D/g, '').length >= 11 && !cpfValido(cpf) && <p className="erro-campo">Confira o CPF.</p>}
+        <button className="btn btn--primario btn--bloco" style={{ marginTop: 16 }} disabled={!cpfValido(cpf) || indo} onClick={() => { setPedirCpf(false); ir(escolha!, cpf) }}>Continuar para o pagamento</button>
+      </Modal>
+
+      <Modal aberto={confirmarCancelar} onFechar={() => setConfirmarCancelar(false)}>
+        <div style={{ display: 'flex', justifyContent: 'center' }}><Mascot expressao="pensativo" size={80} /></div>
+        <h3 style={{ textAlign: 'center' }}>Cancelar a assinatura?</h3>
+        <p className="legenda" style={{ textAlign: 'center', fontSize: 14.5 }}>As próximas cobranças param. Seus registros continuam guardados.</p>
+        <button className="btn btn--perigo btn--bloco" style={{ marginTop: 16 }} disabled={indo} onClick={cancelar}>{indo ? 'Cancelando…' : 'Cancelar assinatura'}</button>
+        <button className="btn btn--fantasma btn--bloco" style={{ marginTop: 8 }} onClick={() => setConfirmarCancelar(false)}>Manter</button>
       </Modal>
     </div>
   )

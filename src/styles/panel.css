@@ -161,3 +161,17 @@
 .p-barras--dias { position: relative; height: 120px; gap: 3px; margin: 4px 0 14px; }
 .p-barras--dias .p-barras__col i { max-width: none; border-radius: 4px 4px 2px 2px; min-height: 2px; }
 .p-barras__meta { position: absolute; left: 0; right: 0; border-top: 1.5px dashed var(--turquesa); font-size: 10.5px; color: #0f7e74; font-weight: 700; padding-left: 2px; line-height: 1.6; pointer-events: none; }
+
+/* pagamentos (admin) */
+.p-gateways { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 12px; }
+.p-gateway { border: 1.5px solid var(--borda); border-radius: 16px; padding: 14px 16px; background: #fff; text-align: left; cursor: pointer; display: grid; gap: 4px; font: inherit; color: var(--texto); transition: border-color .15s, box-shadow .15s; }
+.p-gateway b { font-family: var(--f-titulo); font-size: 17px; color: var(--roxo); display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.p-gateway small { color: var(--texto-2); font-size: 13px; }
+.p-gateway.is-on { border-color: var(--violeta); box-shadow: 0 0 0 3px rgba(108, 63, 196, .15); }
+.p-modo { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-top: 16px; }
+.p-modo .p-select.is-producao { border-color: var(--sucesso); color: var(--sucesso); }
+.p-url { display: flex; gap: 8px; align-items: center; justify-content: space-between; background: var(--lilas); border-radius: 12px; padding: 10px 12px; margin-top: 8px; }
+.p-url code { font-size: 13px; color: var(--roxo); word-break: break-all; }
+.p-cred { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center; }
+.p-passos { margin: 8px 0 0; padding-left: 20px; color: var(--texto-2); font-size: 14px; display: grid; gap: 4px; }
+@media (max-width: 760px) { .p-gateways { grid-template-columns: 1fr; } }

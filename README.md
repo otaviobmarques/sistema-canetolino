@@ -99,3 +99,11 @@ Sem plano gratuito. Valores em `src/data/planos.ts`: **Básico R$ 9,90/mês** (R
 - Revisão clínica da lista de sintomas de alerta, revisão jurídica (LGPD) e avaliação do enquadramento na Anvisa.
 
 > Os números nas ilustrações do site são exemplos.
+
+## Pagamentos (assinaturas)
+
+- O gateway (Asaas, Mercado Pago ou Stripe) e o modo (Teste ou Produção) são escolhidos em **Admin → Pagamentos**. As chaves ficam na tabela `segredos` e só aparecem mascaradas no painel.
+- Função `pagamentos` (Edge Function): `checkout`, `cancelar` e os webhooks
+  `https://mmxoenkeuyvjvahkofik.supabase.co/functions/v1/pagamentos/webhook/{asaas|mercadopago|stripe}`
+  (a mesma URL serve aos dois modos: o token/segredo que bate diz se o aviso é de teste ou de produção).
+- Preços definidos no servidor. O `profiles.plano` só muda quando o gateway confirma o pagamento (o paciente não consegue alterá-lo pela API).

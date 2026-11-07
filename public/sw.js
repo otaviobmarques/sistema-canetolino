@@ -1,8 +1,8 @@
 // Canetolino · service worker: notificações e funcionamento básico sem internet.
-const CACHE = 'canetolino-v1'
+const CACHE = 'canetolino-v2'
 
 self.addEventListener('install', (e) => {
-  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(['./', './index.html', './manifest.webmanifest', './icon-192.png'])))
+  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png', './favicon.svg'])))
   self.skipWaiting()
 })
 

@@ -1,3 +1,4 @@
+import BotaoInstalar from '../components/Instalar'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
@@ -570,6 +571,7 @@ export function Perfil() {
 
       <h2 className="secao-titulo">Lembretes</h2>
       <CartaoLembretes />
+      <BotaoInstalar className="btn btn--lilas btn--bloco" style={{ marginTop: 10 }} texto="Instalar o Canetolino neste aparelho" />
 
       <h2 className="secao-titulo">Privacidade</h2>
       <Cartao i={1} className="card lista-config">

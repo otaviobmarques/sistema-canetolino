@@ -212,3 +212,6 @@ textarea.campo { padding: 14px 16px; min-height: 90px; resize: vertical; }
 }
 
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); border: 0; }
+
+/* passo a passo de instalação no iPhone */
+.passos-instalar { text-align: left; margin: 12px 0 6px; padding-left: 22px; display: grid; gap: 8px; color: var(--texto); font-size: 15px; }

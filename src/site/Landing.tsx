@@ -1,3 +1,4 @@
+import BotaoInstalar from '../components/Instalar'
 import { AnimatePresence, motion, useMotionValue, useScroll, useSpring, useTransform } from 'framer-motion'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
@@ -193,6 +194,7 @@ function Hero() {
             <a href="#como" className="btn btn--fantasma" onClick={(e) => { e.preventDefault(); document.getElementById('como')?.scrollIntoView({ behavior: 'smooth' }) }}>
               Ver como funciona
             </a>
+            <BotaoInstalar />
           </motion.div>
           <motion.ul className="hero__garantias" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 1.1 }}>
             <li><Icon name="shield" size={18} /> Dados protegidos pela LGPD</li>

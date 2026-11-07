@@ -8,7 +8,7 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 export const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL ?? 'https://mmxoenkeuyvjvahkofik.supabase.co'
 const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_KEY ?? 'sb_publishable_LMeWDQPrdxWGNwbdMzN0pg_BYiJbZIl'
 
-export type Area = 'app' | 'pro' | 'clinic'
+export type Area = 'app' | 'pro' | 'clinic' | 'admin'
 
 const cache: Partial<Record<Area, SupabaseClient>> = {}
 

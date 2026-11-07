@@ -19,7 +19,7 @@ async function tudo<T = Linha>(q: PromiseLike<{ data: T[] | null; error: unknown
 
 /** Lê as tabelas de saúde de um paciente (o próprio, ou um paciente que autorizou o profissional). */
 export async function lerSaude(c: SupabaseClient, uid: string, base: Estado): Promise<Estado> {
-  const [apl, agua, pesos, sint, trein, canetas, compras, meals, itens, med, presc, sched, medidas] = await Promise.all([
+  const [apl, agua, pesos, sint, trein, canetas, compras, meals, itens, med, presc, sched, medidas, bemestar] = await Promise.all([
     tudo(c.from('applications').select('*').eq('user_id', uid).order('aplicado_em')),
     tudo(c.from('hydration_records').select('*').eq('user_id', uid).order('registrado_em')),
     tudo(c.from('weight_records').select('*').eq('user_id', uid).order('registrado_em')),
@@ -33,6 +33,7 @@ export async function lerSaude(c: SupabaseClient, uid: string, base: Estado): Pr
     tudo(c.from('prescriptions').select('*').eq('user_id', uid)),
     tudo(c.from('application_schedules').select('*').eq('user_id', uid)),
     tudo(c.from('measurements').select('*').eq('user_id', uid).order('registrado_em')),
+    tudo(c.from('wellbeing_records').select('*').eq('user_id', uid).order('registrado_em')),
   ])
   const m = med[0]
   const p = m && presc.find((x) => x.medication_id === m.id)
@@ -45,6 +46,7 @@ export async function lerSaude(c: SupabaseClient, uid: string, base: Estado): Pr
     aplicacoes: apl.map((r) => ({ id: r.id as string, em: iso(r.aplicado_em), local: r.local as Local, obs: (r.observacao as string) ?? undefined })),
     agua: agua.map((r) => ({ id: r.id as string, ml: r.ml as number, em: iso(r.registrado_em) })),
     pesos: pesos.map((r) => ({ id: r.id as string, kg: Number(r.peso_kg), em: iso(r.registrado_em) })),
+    bemestar: bemestar.map((r) => ({ id: r.id as string, em: iso(r.registrado_em), sono_horas: r.sono_horas == null ? undefined : Number(r.sono_horas), sono_qualidade: (r.sono_qualidade as number) ?? undefined, humor: (r.humor as number) ?? undefined, energia: (r.energia as number) ?? undefined, fome: (r.fome as number) ?? undefined, obs: (r.observacao as string) ?? undefined })),
     medidas: medidas.map((r) => ({ id: r.id as string, tipo: r.tipo as TipoMedida, cm: Number(r.medida_cm), em: iso(r.registrado_em) })),
     sintomas: sint.map((r) => ({ id: r.id as string, em: iso(r.registrado_em), sintomas: r.sintomas as string[], intensidade: r.intensidade as number, obs: (r.observacao as string) ?? undefined, alerta: !!r.alerta_disparado })),
     treinos: trein.map((r) => ({ id: r.id as string, em: iso(r.registrado_em), tipo: r.tipo as string, duracao_min: r.duracao_min as number, forca: !!r.forca })),
@@ -121,6 +123,7 @@ const COLECOES: Partial<Record<keyof Estado, Mapa<never>>> = {
   sintomas: { tabela: 'symptoms', linha: (x: Estado['sintomas'][number], uid) => ({ id: x.id, user_id: uid, sintomas: x.sintomas, intensidade: x.intensidade, observacao: x.obs ?? null, alerta_disparado: x.alerta, registrado_em: x.em }) } as Mapa<never>,
   treinos: { tabela: 'workouts', linha: (x: Estado['treinos'][number], uid) => ({ id: x.id, user_id: uid, tipo: x.tipo, duracao_min: x.duracao_min, forca: x.forca, registrado_em: x.em }) } as Mapa<never>,
   canetas: { tabela: 'pen_inventory', linha: (x: Estado['canetas'][number], uid) => ({ id: x.id, user_id: uid, nome: x.nome, lote: x.lote, validade: x.validade, quantidade: x.quantidade }) } as Mapa<never>,
+  bemestar: { tabela: 'wellbeing_records', linha: (x: Estado['bemestar'][number], uid) => ({ id: x.id, user_id: uid, sono_horas: x.sono_horas ?? null, sono_qualidade: x.sono_qualidade ?? null, humor: x.humor ?? null, energia: x.energia ?? null, fome: x.fome ?? null, observacao: x.obs ?? null, registrado_em: x.em }) } as Mapa<never>,
   medidas: { tabela: 'measurements', linha: (x: Estado['medidas'][number], uid) => ({ id: x.id, user_id: uid, tipo: x.tipo, medida_cm: x.cm, registrado_em: x.em }) } as Mapa<never>,
   alimentosRotulo: { tabela: 'user_foods', linha: (x: Estado['alimentosRotulo'][number], uid) => ({ id: x.id, user_id: uid, nome: x.nome, porcao_g: x.porcao_g, porcao_texto: x.porcao_texto ?? null, proteina_g: x.proteina_g, energia_kcal: x.energia_kcal ?? null }) } as Mapa<never>,
   compras: { tabela: 'pen_purchases', linha: (x: Estado['compras'][number], uid) => ({ id: x.id, user_id: uid, data: x.em, valor_centavos: x.valor_centavos, quantidade: x.quantidade }) } as Mapa<never>,

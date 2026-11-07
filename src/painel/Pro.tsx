@@ -1,7 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Navigate, Route, Routes } from 'react-router-dom'
+import { Link, Navigate, Route, Routes } from 'react-router-dom'
 import GraficoPeso from '../components/GraficoPeso'
 import Icon from '../components/Icon'
 import Mascot from '../components/Mascot'
@@ -11,7 +11,9 @@ import { MODULOS, semana, ultimoPeso, vazio, type Modulo } from '../data/store'
 import { DIA_MS, dataBR, dataHoraBR, num, relativo } from '../lib/datas'
 import { erroPt } from '../lib/supabase'
 import { AuthPainel, usePainel } from './Auth'
+import Ficha from './Ficha'
 import { Cabecalho, PainelLayout } from './Layout'
+import { baixarRelatorio } from './relatorio'
 
 type Profissional = { id: string; nome: string; profissao: string; registro_conselho: string; uf: string | null; codigo_convite: string; verificado: boolean }
 
@@ -53,7 +55,7 @@ async function montarPaciente(c: SupabaseClient, l: LinhaPaciente): Promise<Paci
   }
   if (m.includes('sintomas')) partes.push(w.sintomasSemana.length ? `Sintomas na semana: ${[...new Set(w.sintomasSemana.flatMap((x) => x.sintomas))].join(', ').toLowerCase()}.` : 'Nenhum sintoma registrado.')
   if (m.includes('aplicacoes')) partes.push(`${Math.min(apl, 4)} de 4 aplicações registradas nas últimas 4 semanas.`)
-  if (m.includes('bemestar')) partes.push(`${w.treinosForca} treino(s) de força na semana.`)
+  if (m.includes('bemestar')) partes.push(`${w.treinosForca} treino(s) de força na semana.${w.sonoMedio != null ? ` Sono médio de ${num(w.sonoMedio)} h${w.fomeMedia != null ? `, fome ${num(w.fomeMedia)}/5` : ''}.` : ''}`)
   return {
     id: l.paciente_id,
     nome: l.nome || 'Paciente',
@@ -120,6 +122,7 @@ export default function ProPainel() {
     <PainelLayout sufixo="Pro" itens={ITENS} usuario={{ nome: prof.nome, papel: `${prof.profissao} · ${prof.registro_conselho}` }} onSair={sair}>
       <Routes>
         <Route index element={<Pacientes c={c} prof={prof} onRelatorio={(r) => setRelatorios((l) => [r, ...l])} />} />
+        <Route path="paciente/:id" element={<Ficha c={c} />} />
         <Route path="convites" element={<Convites c={c} prof={prof} />} />
         <Route path="relatorios" element={<Relatorios lista={relatorios} />} />
         <Route path="conta" element={<Conta prof={prof} email={sessao?.user.email ?? ''} />} />
@@ -178,7 +181,7 @@ function Pacientes({ c, prof, onRelatorio }: { c: SupabaseClient; prof: Profissi
   const [lista, setLista] = useState<Paciente[] | null>(null)
   const [erro, setErro] = useState('')
   const [selId, setSelId] = useState<string | null>(null)
-  const [pdf, setPdf] = useState(false)
+  const [gerando, setGerando] = useState(false)
   const [convite, setConvite] = useState(false)
   const registrados = useRef(new Set<string>())
 
@@ -295,8 +298,26 @@ function Pacientes({ c, prof, onRelatorio }: { c: SupabaseClient; prof: Profissi
                   </div>
                 )}
                 <div className="p-texto-resumo">{sel.resumo}</div>
-                <button className="btn btn--contorno btn--bloco" onClick={() => { setPdf(true); registrar(sel, 'Gerou relatório em PDF') }}>
-                  <Icon name="file" size={18} /> Gerar relatório em PDF
+                <Link to={`/pro/paciente/${sel.id}`} className="btn btn--primario btn--bloco">
+                  Abrir ficha completa <Icon name="arrow" size={18} />
+                </Link>
+                <button
+                  className="btn btn--contorno btn--bloco"
+                  style={{ marginTop: 8 }}
+                  disabled={gerando}
+                  onClick={async () => {
+                    setGerando(true)
+                    try {
+                      await baixarRelatorio(c, sel.id, 30, sel.nome)
+                      onRelatorio({ id: crypto.randomUUID(), paciente: sel.nome, em: new Date().toISOString(), modulos: sel.modulos })
+                    } catch (e) {
+                      toast(erroPt(e), 'info')
+                    } finally {
+                      setGerando(false)
+                    }
+                  }}
+                >
+                  <Icon name="file" size={18} /> {gerando ? 'Gerando PDF…' : 'Relatório em PDF (30 dias)'}
                 </button>
                 <p className="legenda" style={{ marginTop: 10 }}>Este acesso fica registrado no histórico do paciente.</p>
               </motion.aside>
@@ -305,44 +326,6 @@ function Pacientes({ c, prof, onRelatorio }: { c: SupabaseClient; prof: Profissi
         </div>
       )}
 
-      <Modal aberto={pdf} onFechar={() => setPdf(false)} largura={620}>
-        {sel && (
-          <div className="relatorio" id="relatorio">
-            <div className="relatorio__topo">
-              <div>
-                <b className="logo" style={{ fontSize: 20, color: 'var(--roxo)' }}>canetolino<em>Pro</em></b>
-                <p className="legenda">Relatório do período · gerado em {dataHoraBR(new Date())} por {prof.nome}</p>
-              </div>
-              <Mascot expressao="feliz" size={40} flutuar={false} />
-            </div>
-            <h3>{sel.nome}</h3>
-            <p className="legenda">Módulos autorizados: {sel.modulos.map((m) => MODULOS.find((x) => x.id === m)!.nome).join(' · ')}</p>
-            <table className="p-tabela p-tabela--simples">
-              <tbody>
-                <tr><td>Variação de peso</td><td>{sel.peso !== undefined ? `${num(sel.peso)} kg` : sel.modulos.includes('peso') ? 'sem dados' : 'não autorizado'}</td></tr>
-                <tr><td>Proteína média (7 dias)</td><td>{sel.proteina !== undefined ? `${sel.proteina} g/dia (inclui estimativas da IA)` : 'não autorizado'}</td></tr>
-                <tr><td>Aplicações (4 semanas)</td><td>{sel.aplicacoes ?? 'não autorizado'}</td></tr>
-                <tr><td>Alertas</td><td>{sel.modulos.includes('sintomas') ? sel.alerta ?? 'nenhum' : 'não autorizado'}</td></tr>
-              </tbody>
-            </table>
-            {sel.pesos && sel.pesos.length > 1 && <GraficoPeso pontos={sel.pesos} altura={120} />}
-            <p style={{ marginTop: 10 }}>{sel.resumo}</p>
-            <p className="legenda" style={{ marginTop: 12 }}>Dados registrados pelo paciente; refeições podem conter estimativas da IA, conferidas por ele. O Canetolino não faz avaliação médica nem recomenda doses.</p>
-            <div className="duas-col nao-imprimir" style={{ marginTop: 18 }}>
-              <button className="btn btn--contorno" onClick={() => setPdf(false)}>Fechar</button>
-              <button
-                className="btn btn--primario"
-                onClick={() => {
-                  onRelatorio({ id: crypto.randomUUID(), paciente: sel.nome, em: new Date().toISOString(), modulos: sel.modulos })
-                  window.print()
-                }}
-              >
-                <Icon name="download" size={18} /> Baixar PDF
-              </button>
-            </div>
-          </div>
-        )}
-      </Modal>
       <ModalConvite aberto={convite} onFechar={() => setConvite(false)} codigo={prof.codigo_convite} />
     </>
   )
@@ -446,7 +429,7 @@ function Relatorios({ lista }: { lista: Relatorio[] }) {
         <div className="p-vazio">
           <Mascot expressao="dormindo" size={110} />
           <h2>Nenhum relatório ainda</h2>
-          <p>Selecione um paciente na lista e toque em “Gerar relatório em PDF”.</p>
+          <p>Selecione um paciente na lista e toque em “Relatório em PDF”, ou gere pela ficha completa escolhendo o período.</p>
         </div>
       ) : (
         <div className="p-tabela-wrap">

@@ -363,3 +363,77 @@ export function Planos() {
     </div>
   )
 }
+
+/* ======================= Bem-estar e sono ======================= */
+const ESCALAS: { id: 'sono_qualidade' | 'humor' | 'energia' | 'fome'; nome: string; baixo: string; alto: string; rotulos: string[] }[] = [
+  { id: 'sono_qualidade', nome: 'Como foi o sono?', baixo: 'ruim', alto: 'ótimo', rotulos: ['😫', '😕', '😐', '🙂', '😴'] },
+  { id: 'humor', nome: 'Humor', baixo: 'pra baixo', alto: 'ótimo', rotulos: ['😞', '😕', '😐', '🙂', '😄'] },
+  { id: 'energia', nome: 'Energia', baixo: 'sem energia', alto: 'cheia de energia', rotulos: ['🪫', '😮‍💨', '😐', '🙂', '⚡'] },
+  { id: 'fome', nome: 'Fome hoje', baixo: 'quase nenhuma', alto: 'muita', rotulos: ['1', '2', '3', '4', '5'] },
+]
+
+export function BemEstarTela() {
+  const nav = useNavigate()
+  const { s, set } = useStore()
+  const toast = useToast()
+  const [horas, setHoras] = useState(7)
+  const [notas, setNotas] = useState<Partial<Record<(typeof ESCALAS)[number]['id'], number>>>({})
+  const [obs, setObs] = useState('')
+  const ultimos = [...s.bemestar].sort((a, b) => +new Date(b.em) - +new Date(a.em)).slice(0, 7)
+  return (
+    <div className="tela">
+      <div className="topo">
+        <button className="btn-icone" onClick={() => nav(-1)} aria-label="Voltar">
+          <Icon name="back" />
+        </button>
+        <h1 className="titulo-tela" style={{ fontSize: 26 }}>Bem-estar e sono</h1>
+      </div>
+      <span className="rotulo" style={{ marginTop: 4 }}>Quanto você dormiu: {num(horas)} h</span>
+      <input type="range" min={0} max={12} step={0.5} value={horas} onChange={(e) => setHoras(Number(e.target.value))} className="range" aria-label="Horas de sono" />
+      {ESCALAS.map((e) => (
+        <div key={e.id}>
+          <span className="rotulo">{e.nome}</span>
+          <div className="chips" style={{ flexWrap: 'nowrap' }}>
+            {e.rotulos.map((r, i) => (
+              <button key={i} aria-pressed={notas[e.id] === i + 1} aria-label={`${e.nome}: ${i + 1} de 5`} className={`chip chip--quadrado chip--violeta escala ${notas[e.id] === i + 1 ? 'is-on' : ''}`} onClick={() => setNotas((n) => ({ ...n, [e.id]: n[e.id] === i + 1 ? undefined : i + 1 }))}>
+                {r}
+              </button>
+            ))}
+          </div>
+          <div className="entre legenda" style={{ marginTop: 4, fontSize: 12 }}>
+            <span>{e.baixo}</span>
+            <span>{e.alto}</span>
+          </div>
+        </div>
+      ))}
+      <label className="rotulo" htmlFor="beo">Observação (opcional)</label>
+      <input id="beo" className="campo" placeholder="Ex.: acordei várias vezes" value={obs} onChange={(e) => setObs(e.target.value)} />
+      {ultimos.length > 0 && (
+        <div className="card lista" style={{ marginTop: 16 }}>
+          {ultimos.map((b) => (
+            <div key={b.id} className="lista__linha">
+              <span>{dataCurta(b.em)}</span>
+              <span className="legenda" style={{ fontSize: 13.5 }}>
+                {b.sono_horas != null ? `${num(b.sono_horas)} h de sono` : ''}
+                {b.humor ? ` · humor ${b.humor}/5` : ''}
+                {b.fome ? ` · fome ${b.fome}/5` : ''}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+      <div className="rodape-acao">
+        <button
+          className="btn btn--primario btn--bloco"
+          onClick={() => {
+            set((x) => ({ ...x, bemestar: [...x.bemestar, { id: uid(), em: new Date().toISOString(), sono_horas: horas, ...notas, obs: obs.trim() || undefined }] }))
+            toast('Bem-estar registrado 💜')
+            nav('/app/home')
+          }}
+        >
+          Salvar
+        </button>
+      </div>
+    </div>
+  )
+}

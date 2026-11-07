@@ -7,11 +7,12 @@ import { StoreProvider } from './data/store'
 import Landing from './site/Landing'
 import ProPainel from './painel/Pro'
 import ClinicPainel from './painel/Clinic'
+import AdminPainel from './painel/Admin'
 
 function TituloPorRota() {
   const { pathname } = useLocation()
   useEffect(() => {
-    const t = pathname.startsWith('/app') ? 'App' : pathname.startsWith('/pro') ? 'Pro' : pathname.startsWith('/clinic') ? 'Clinic' : ''
+    const t = pathname.startsWith('/app') ? 'App' : pathname.startsWith('/pro') ? 'Pro' : pathname.startsWith('/clinic') ? 'Clinic' : pathname.startsWith('/admin') ? 'Admin' : ''
     document.title = t ? `Canetolino ${t}` : 'Canetolino'
     if (!pathname.startsWith('/app')) window.scrollTo(0, 0)
   }, [pathname])
@@ -61,6 +62,7 @@ export default function App() {
           <Route path="/app/*" element={<AppShell />} />
           <Route path="/pro/*" element={<ProPainel />} />
           <Route path="/clinic/*" element={<ClinicPainel />} />
+          <Route path="/admin/*" element={<AdminPainel />} />
           <Route path="*" element={<Landing />} />
         </Routes>
       </ToastProvider>

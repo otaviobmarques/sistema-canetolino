@@ -143,3 +143,21 @@
 .p-qr code { font-size: 12px; color: var(--roxo); }
 .p-carregando { display: grid; place-items: center; min-height: 60vh; }
 .p-form-card { max-width: 560px; }
+
+/* ficha completa do paciente */
+.p-voltar { display: inline-flex; align-items: center; gap: 4px; color: var(--violeta); font-weight: 700; text-decoration: none; font-size: 14px; margin-bottom: 6px; }
+.p-periodo { display: flex; background: var(--lilas); border-radius: 12px; padding: 4px; }
+.p-periodo button { border: 0; background: none; padding: 9px 12px; border-radius: 9px; font-weight: 700; color: var(--texto-2); cursor: pointer; font-size: 13.5px; }
+.p-periodo button.is-on { background: #fff; color: var(--roxo); box-shadow: var(--sombra); }
+.ficha { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; align-items: start; }
+.ficha__secao h3 { margin-bottom: 10px; }
+.ficha__secao .p-tabela--simples td { padding: 8px 6px 8px 0; font-size: 13.5px; white-space: normal; vertical-align: top; }
+@media (max-width: 1100px) { .ficha { grid-template-columns: 1fr; } }
+.p-mini-kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 12px; }
+.p-mini-kpis div { background: var(--lilas); border-radius: 12px; padding: 10px; display: grid; gap: 2px; }
+.p-mini-kpis small { color: var(--texto-2); font-size: 11.5px; }
+.p-mini-kpis b { font-family: var(--f-titulo); color: var(--roxo); font-size: 17px; }
+@media (max-width: 600px) { .p-mini-kpis { grid-template-columns: 1fr 1fr; } }
+.p-barras--dias { position: relative; height: 120px; gap: 3px; margin: 4px 0 14px; }
+.p-barras--dias .p-barras__col i { max-width: none; border-radius: 4px 4px 2px 2px; min-height: 2px; }
+.p-barras__meta { position: absolute; left: 0; right: 0; border-top: 1.5px dashed var(--turquesa); font-size: 10.5px; color: #0f7e74; font-weight: 700; padding-left: 2px; line-height: 1.6; pointer-events: none; }

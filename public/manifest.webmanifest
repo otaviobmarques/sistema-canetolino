@@ -1,0 +1,17 @@
+{
+  "name": "Canetolino",
+  "short_name": "Canetolino",
+  "description": "Seu diário de tratamento com canetas: aplicações, proteína, água e evolução, com o Dose ao seu lado.",
+  "lang": "pt-BR",
+  "start_url": "./#/app",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#3B1A6E",
+  "theme_color": "#3B1A6E",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

@@ -29,6 +29,9 @@ export function Registrar() {
     { icone: 'scale', nome: 'Peso e medidas', acao: () => nav('/app/evolucao?aba=peso') },
     { icone: 'sad', nome: 'Sintoma', acao: () => nav('/app/registrar/sintoma') },
     { icone: 'dumbbell', nome: 'Treino', acao: () => nav('/app/registrar/treino') },
+    { icone: 'heart', nome: 'Bem-estar e sono', acao: () => nav('/app/registrar/bemestar') },
+    { icone: 'camera', nome: 'Foto de evolução', acao: () => nav('/app/evolucao?aba=fotos') },
+    { icone: 'box', nome: 'Canetas', acao: () => nav('/app/jornada') },
   ]
   const addAgua = (ml: number) => {
     set((x) => ({ ...x, agua: [...x.agua, { id: uid(), ml, em: new Date().toISOString() }] }))

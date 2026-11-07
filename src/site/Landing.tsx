@@ -686,7 +686,8 @@ function Rodape() {
           <b>Empresa</b>
           <a href="#privacidade">Privacidade e LGPD</a>
           <a href="#">Termos de uso</a>
-          <a href="mailto:contato@canetolino.app">contato@canetolino.app</a>
+          <a href="mailto:contato@canetolino.com.br">contato@canetolino.com.br</a>
+          <Link to="/admin">Área da equipe</Link>
         </div>
       </div>
       <div className="lp-container rodape__base">© {new Date().getFullYear()} Canetolino. Feito com 💜 no Brasil.</div>

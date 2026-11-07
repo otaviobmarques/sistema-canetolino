@@ -23,6 +23,8 @@ import {
 } from '../data/store'
 import { PLANOS, precoBR } from '../data/planos'
 import { resumoSemanal } from '../lib/ia'
+import { baixarRelatorio } from '../painel/relatorio'
+import { ativar, desativar, situacao, testar, type SituacaoLembretes } from '../lib/notificacoes'
 import { erroPt, sb } from '../lib/supabase'
 import { dataBR, dataCurta, dataDiaMes, dataHoraBR, DIA_MS, diasEntre, DIAS_LONGOS, inicioDoDia, mesAno, num, saudacaoData, uid } from '../lib/datas'
 
@@ -311,6 +313,9 @@ export function Radar() {
       variacao_peso_kg_semana: pesos.length > 1 ? +(pesos[pesos.length - 1].kg - pesos[Math.max(0, pesos.length - 2)].kg).toFixed(1) : null,
       sintomas: w.sintomasSemana.map((x) => ({ sintomas: x.sintomas, intensidade: x.intensidade, dias_apos_ultima_aplicacao: ultApl ? diasEntre(ultApl.em, x.em) : null })),
       aplicacao_registrada_na_semana: s.aplicacoes.some((a) => new Date(a.em) >= w.inicio),
+      sono_medio_horas: w.sonoMedio,
+      humor_medio_1a5: w.humorMedio,
+      fome_media_1a5: w.fomeMedia,
     }
   }, [s, w, pesos])
   useEffect(() => {
@@ -332,6 +337,8 @@ export function Radar() {
   const intensidade = w.sintomasSemana.length ? Math.max(...w.sintomasSemana.map((x) => x.intensidade)) : 0
   const diasSint = new Set(w.sintomasSemana.map((x) => inicioDoDia(x.em).getTime())).size
   const ativo = s.compartilhamentos.find(compartilhamentoAtivo)
+  const [baixando, setBaixando] = useState(false)
+  const toast = useToast()
 
   return (
     <div className="tela tela--com-nav">
@@ -376,11 +383,113 @@ export function Radar() {
         <Indicador i={3} rotulo="Água na meta" valor={`${w.diasAguaMeta} de 7 dias`} />
         <Indicador i={4} rotulo="Treino de força" valor={`${w.treinosForca} ${w.treinosForca === 1 ? 'sessão' : 'sessões'}`} />
         <Indicador i={5} rotulo="Sintomas" valor={diasSint ? `${diasSint} ${diasSint === 1 ? 'dia' : 'dias'}, ${intensidade <= 2 ? 'leve' : intensidade <= 3 ? 'moderado' : 'forte'}` : 'nenhum'} />
+        <Indicador i={6} rotulo="Sono médio" valor={w.sonoMedio != null ? `${num(w.sonoMedio)} h/noite` : 'sem registro'} />
+        <Indicador i={7} rotulo="Humor médio" valor={w.humorMedio != null ? `${num(w.humorMedio)} de 5` : 'sem registro'} />
       </div>
 
-      <button className="btn btn--contorno btn--bloco" style={{ marginTop: 14 }} onClick={() => nav('/app/perfil/compartilhar')}>
+      <button
+        className="btn btn--lilas btn--bloco"
+        style={{ marginTop: 14 }}
+        disabled={baixando}
+        onClick={async () => {
+          if (s.perfil.plano !== 'premium') return nav('/app/planos')
+          setBaixando(true)
+          try {
+            await baixarRelatorio(sb('app'), null, 30, s.perfil.nome || 'meu')
+          } catch (e) {
+            toast(erroPt(e), 'info')
+          } finally {
+            setBaixando(false)
+          }
+        }}
+      >
+        <Icon name="download" size={20} /> {baixando ? 'Gerando PDF…' : 'Baixar meu relatório (30 dias)'}
+        {s.perfil.plano !== 'premium' && <span className="selo selo--roxo" style={{ padding: '1px 8px' }}>Premium</span>}
+      </button>
+      <button className="btn btn--contorno btn--bloco" style={{ marginTop: 10 }} onClick={() => nav('/app/perfil/compartilhar')}>
         <Icon name="upload" size={20} /> Enviar relatório {ativo ? `à ${ativo.profissao.toLowerCase()}` : 'a um profissional'}
       </button>
+    </div>
+  )
+}
+
+function CartaoLembretes() {
+  const { s, set } = useStore()
+  const toast = useToast()
+  const [sit, setSit] = useState<SituacaoLembretes | null>(null)
+  const [ocupado, setOcupado] = useState(false)
+  useEffect(() => {
+    situacao().then(setSit).catch(() => setSit('sem-suporte'))
+  }, [])
+  const texto: Record<SituacaoLembretes, string> = {
+    ligado: 'Ligados neste aparelho. Você recebe o aviso do dia de aplicação, da água e da validade das canetas.',
+    desligado: 'Receba o aviso do dia de aplicação, da água e da validade das canetas, mesmo com o app fechado.',
+    bloqueado: 'As notificações estão bloqueadas neste navegador. Libere nas configurações do site para receber os lembretes.',
+    'precisa-instalar': 'No iPhone, os lembretes funcionam com o app na tela de início: toque em Compartilhar → Adicionar à Tela de Início e abra por lá.',
+    'sem-suporte': 'Este navegador não recebe notificações. Tente pelo Chrome, Edge, Firefox ou Safari atualizado.',
+  }
+  return (
+    <div className="card lista-config">
+      <div className="linha-config" style={{ alignItems: 'flex-start' }}>
+        <div>
+          <b>Notificações neste aparelho</b>
+          <span>{sit ? texto[sit] : 'Verificando…'}</span>
+        </div>
+        {sit === 'ligado' && <span className="selo selo--sucesso" style={{ flex: 'none' }}>ligados</span>}
+      </div>
+      {(sit === 'desligado' || sit === 'ligado') && (
+        <div className="linha-config" style={{ gap: 8 }}>
+          {sit === 'desligado' ? (
+            <button
+              className="btn btn--primario btn--bloco btn--pequeno"
+              disabled={ocupado}
+              onClick={async () => {
+                setOcupado(true)
+                try {
+                  await ativar(s.userId!)
+                  setSit('ligado')
+                  toast('Lembretes ligados 💜')
+                } catch (e) {
+                  toast(erroPt(e), 'info')
+                  setSit(await situacao())
+                } finally {
+                  setOcupado(false)
+                }
+              }}
+            >
+              <Icon name="calendar" size={18} /> Ligar lembretes
+            </button>
+          ) : (
+            <>
+              <button
+                className="btn btn--lilas btn--pequeno"
+                style={{ flex: 1 }}
+                disabled={ocupado}
+                onClick={async () => {
+                  setOcupado(true)
+                  try {
+                    const n = await testar()
+                    toast(n ? 'Lembrete de teste enviado' : 'Não consegui enviar o teste. Tente ligar de novo.', 'info')
+                  } catch (e) {
+                    toast(erroPt(e), 'info')
+                  } finally {
+                    setOcupado(false)
+                  }
+                }}
+              >
+                Enviar teste
+              </button>
+              <button className="btn btn--contorno btn--pequeno" style={{ flex: 1 }} disabled={ocupado} onClick={async () => { await desativar(); setSit('desligado'); toast('Lembretes desligados neste aparelho', 'info') }}>
+                Desligar
+              </button>
+            </>
+          )}
+        </div>
+      )}
+      <div className="linha-config">
+        <div><b>Lembretes de água</b><span>Às 10h, 14h e 18h, se a meta ainda não foi batida</span></div>
+        <Interruptor ligado={s.config.lembretesAgua} onChange={(v) => set((x) => ({ ...x, config: { ...x.config, lembretesAgua: v } }))} rotulo="Lembretes de água" />
+      </div>
     </div>
   )
 }
@@ -457,6 +566,9 @@ export function Perfil() {
         ))}
       </AnimatePresence>
       <Link to="/app/perfil/compartilhar" className="btn-tracejado">+ Compartilhar com um profissional</Link>
+
+      <h2 className="secao-titulo">Lembretes</h2>
+      <CartaoLembretes />
 
       <h2 className="secao-titulo">Privacidade</h2>
       <Cartao i={1} className="card lista-config">

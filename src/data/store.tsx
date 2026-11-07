@@ -41,6 +41,7 @@ export const TIPOS_MEDIDA = [
 ] as const
 export type TipoMedida = (typeof TIPOS_MEDIDA)[number]['id']
 export type Medida = { id: string; tipo: TipoMedida; cm: number; em: string }
+export type BemEstar = { id: string; em: string; sono_horas?: number; sono_qualidade?: number; humor?: number; energia?: number; fome?: number; obs?: string }
 export type AlimentoRotulo = { id: string; nome: string; porcao_g: number; porcao_texto?: string; proteina_g: number; energia_kcal?: number }
 export type Refeicao = { id: string; tipo: string; em: string; itens: ItemRefeicao[]; origem: Origem; versao_tabela: string; foto?: string }
 export type Aplicacao = { id: string; em: string; local: Local; obs?: string }
@@ -89,6 +90,7 @@ export type Estado = {
   refeicoes: Refeicao[]
   pesos: Peso[]
   medidas: Medida[]
+  bemestar: BemEstar[]
   alimentosRotulo: AlimentoRotulo[]
   sintomas: Sintoma[]
   treinos: Treino[]
@@ -112,6 +114,7 @@ export const vazio = (): Estado => ({
   refeicoes: [],
   pesos: [],
   medidas: [],
+  bemestar: [],
   alimentosRotulo: [],
   sintomas: [],
   treinos: [],
@@ -172,11 +175,17 @@ export function semana(s: Estado) {
       aguaDoDia(s, d) > 0 ||
       s.pesos.some((p) => mesmoDia(p.em, d)) ||
       s.sintomas.some((x) => mesmoDia(x.em, d)) ||
-      s.aplicacoes.some((x) => mesmoDia(x.em, d)),
+      s.aplicacoes.some((x) => mesmoDia(x.em, d)) ||
+      s.bemestar.some((x) => mesmoDia(x.em, d)),
   ).length
   const inicio = dias[0].getTime()
   const sintomasSemana = s.sintomas.filter((x) => new Date(x.em).getTime() >= inicio)
   const treinosForca = s.treinos.filter((t) => t.forca && new Date(t.em).getTime() >= inicio).length
+  const be = s.bemestar.filter((b) => new Date(b.em).getTime() >= inicio)
+  const media = (xs: (number | undefined)[]) => {
+    const v = xs.filter((x): x is number => typeof x === 'number')
+    return v.length ? +(v.reduce((a, b) => a + b, 0) / v.length).toFixed(1) : null
+  }
   return {
     inicio: dias[0],
     fim: hoje,
@@ -186,6 +195,10 @@ export function semana(s: Estado) {
     diasAguaMeta: aguas.filter((a) => a >= s.perfil.meta_agua_ml).length,
     treinosForca,
     sintomasSemana,
+    sonoMedio: media(be.map((b) => b.sono_horas)),
+    humorMedio: media(be.map((b) => b.humor)),
+    fomeMedia: media(be.map((b) => b.fome)),
+    diasBemEstar: new Set(be.map((b) => inicioDoDia(b.em).getTime())).size,
   }
 }
 

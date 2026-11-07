@@ -10,6 +10,7 @@ São quatro frentes num único projeto React + TypeScript (Vite):
 | `#/app` | App do paciente: as 10 telas do protótipo, mais login, onboarding completo (5 passos), peso e treino |
 | `#/pro` | **Canetolino Pro**: painel do profissional (pacientes, resumo, relatório em PDF, convites) |
 | `#/clinic` | **Canetolino Clinic**: painel da clínica (indicadores agregados, equipe e papéis, convites, plano) |
+| `#/admin` | **Admin**: equipe Canetolino (verificação de profissionais, números gerais). Usuário `Admin`, com verificação em duas etapas |
 
 ## Rodar
 
@@ -58,6 +59,14 @@ A função de servidor `supabase/functions/ia` é a única que fala com a IA; o 
 - **Cota:** 30 refeições por IA por mês no Básico; ilimitado no Premium (`ai_usage`).
 - **Modelo:** `claude-haiku-5-5`, esforço baixo. Custo medido: cerca de US$ 0,0002 por análise. Se o modelo recusar ou falhar, o app cai para a busca manual (ou para o resumo por regras).
 - **Chave:** a função lê `ANTHROPIC_API_KEY` do segredo da função ou, se não houver, da tabela `segredos` (sem acesso pela API; só o servidor lê). Para trocar a chave: `update segredos set valor = '...' where nome = 'ANTHROPIC_API_KEY'` no SQL Editor do Supabase.
+
+## Lembretes, bem-estar, ficha e PDF
+
+- **Lembretes (Web Push):** o paciente liga em Perfil → Lembretes. A função `lembretes` roda a cada 15 minutos (pg_cron) e avisa no dia e hora da aplicação (se ainda não registrou), da água às 10h, 14h e 18h (se a meta não foi batida) e da validade das canetas 30 dias antes. Mensagens discretas por padrão. No iPhone, só com o app adicionado à Tela de Início.
+- **App instalável:** `manifest.webmanifest`, ícones e `sw.js` (notificações e funcionamento básico sem internet; dados de saúde nunca passam pelo cache).
+- **Bem-estar e sono:** horas e qualidade do sono, humor, energia e fome. Entra no Radar, no resumo do Dose e no módulo "bem-estar e sono".
+- **Ficha completa (Pro):** `#/pro/paciente/:id`, com período de 30, 90 ou 365 dias e uma seção por módulo autorizado.
+- **PDF no servidor:** função `relatorio` (pdf-lib). Lê os dados com a sessão de quem pediu, então o RLS limita o conteúdo; marca o que foi estimado pela IA e cita as fontes. Para o profissional, fica no histórico do paciente; para o paciente, faz parte do Premium.
 
 ## Planos (paciente)
 

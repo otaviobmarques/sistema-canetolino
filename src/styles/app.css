@@ -299,3 +299,4 @@ label.btn.is-ocupado { opacity: .6; pointer-events: none; }
 .plano-card .lista-premium { margin: 12px 0 14px; gap: 7px; font-size: 14px; }
 .plano-card .lista-premium li { align-items: flex-start; font-weight: 500; }
 .plano-card .lista-premium svg { flex: none; margin-top: 3px; }
+.chip.escala { font-size: 20px; min-height: 48px; }

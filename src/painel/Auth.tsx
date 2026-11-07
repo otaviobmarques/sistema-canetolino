@@ -6,7 +6,7 @@ import Mascot from '../components/Mascot'
 import { Logo } from '../components/ui'
 import { erroPt, sb, urlRetorno } from '../lib/supabase'
 
-type Area = 'pro' | 'clinic'
+type Area = 'pro' | 'clinic' | 'admin'
 export type EstadoSessao = 'carregando' | 'fora' | 'segundo-fator' | 'pronto'
 
 /** Sessão do painel: só fica "pronto" com o segundo fator verificado (aal2). */
@@ -55,6 +55,7 @@ export function AuthPainel({
   tituloCadastro,
   onPronto,
   extraCadastro,
+  usuarioSemEmail,
 }: {
   area: Area
   c: SupabaseClient
@@ -65,6 +66,8 @@ export function AuthPainel({
   tituloCadastro: string
   onPronto: () => void
   extraCadastro?: ReactNode
+  /** login por nome de usuário (ex.: "Admin"), que vira usuario@dominio; sem cadastro */
+  usuarioSemEmail?: { dominio: string }
 }) {
   const [aba, setAba] = useState<'entrar' | 'cadastro' | 'confirmar'>('entrar')
   const [email, setEmail] = useState('')
@@ -72,14 +75,15 @@ export function AuthPainel({
   const [campos, setCampos] = useState<Record<string, string>>({})
   const [erro, setErro] = useState('')
   const [ocupado, setOcupado] = useState(false)
-  const sufixo = area === 'pro' ? 'Pro' : 'Clinic'
+  const sufixo = area === 'pro' ? 'Pro' : area === 'clinic' ? 'Clinic' : 'Admin'
+  const emailReal = () => (usuarioSemEmail && !email.includes('@') ? `${email.trim().toLowerCase()}@${usuarioSemEmail.dominio}` : email.trim())
 
   const entrar = async (e: React.FormEvent) => {
     e.preventDefault()
     setOcupado(true)
     setErro('')
     try {
-      const { error } = await c.auth.signInWithPassword({ email: email.trim(), password: senha })
+      const { error } = await c.auth.signInWithPassword({ email: emailReal(), password: senha })
       if (error) throw error
       onPronto()
     } catch (er) {
@@ -129,10 +133,10 @@ export function AuthPainel({
               </motion.div>
             ) : (
               <motion.form key={aba} className="p-login__caixa" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} onSubmit={aba === 'entrar' ? entrar : cadastrar}>
-                <div className="p-abas" role="tablist">
+                {usuarioSemEmail ? <h2>Entrar</h2> : <div className="p-abas" role="tablist">
                   <button type="button" role="tab" aria-selected={aba === 'entrar'} className={aba === 'entrar' ? 'is-on' : ''} onClick={() => setAba('entrar')}>Entrar</button>
                   <button type="button" role="tab" aria-selected={aba === 'cadastro'} className={aba === 'cadastro' ? 'is-on' : ''} onClick={() => setAba('cadastro')}>{tituloCadastro}</button>
-                </div>
+                </div>}
                 {aba === 'cadastro' && extraCadastro}
                 {aba === 'cadastro' &&
                   camposCadastro.map((f) => (
@@ -148,15 +152,15 @@ export function AuthPainel({
                       )}
                     </div>
                   ))}
-                <label className="rotulo" htmlFor="pe">E-mail</label>
-                <input id="pe" className="campo" type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" required />
+                <label className="rotulo" htmlFor="pe">{usuarioSemEmail ? 'Usuário' : 'E-mail'}</label>
+                <input id="pe" className="campo" type={usuarioSemEmail ? 'text' : 'email'} value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="username" autoCapitalize="none" required />
                 <label className="rotulo" htmlFor="ps">Senha</label>
                 <input id="ps" className="campo" type="password" value={senha} onChange={(e) => setSenha(e.target.value)} autoComplete={aba === 'entrar' ? 'current-password' : 'new-password'} required minLength={aba === 'cadastro' ? 8 : undefined} />
                 {erro && <p className="erro-campo" role="alert">{erro}</p>}
                 <button className="btn btn--primario btn--bloco" style={{ marginTop: 22 }} disabled={ocupado}>
                   {ocupado ? 'Aguarde…' : aba === 'entrar' ? 'Continuar' : 'Criar conta'}
                 </button>
-                {aba === 'entrar' && (
+                {aba === 'entrar' && !usuarioSemEmail && (
                   <button
                     type="button"
                     className="btn btn--contorno btn--bloco"

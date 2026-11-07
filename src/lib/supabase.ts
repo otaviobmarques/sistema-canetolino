@@ -40,7 +40,6 @@ export function erroPt(e: unknown): string {
   if (/User already registered/i.test(m)) return 'Já existe uma conta com este e-mail. Tente entrar.'
   if (/Password should be at least/i.test(m)) return 'A senha precisa ter pelo menos 6 caracteres.'
   if (/rate limit/i.test(m)) return 'Muitas tentativas em pouco tempo. Aguarde alguns minutos.'
-  if (/Invalid TOTP|invalid.*code/i.test(m)) return 'Código inválido. Confira o app autenticador e tente de novo.'
   if (/Failed to fetch|NetworkError/i.test(m)) return 'Sem conexão. Seus registros ficam guardados e sincronizam depois.'
   if (/código não encontrado/i.test(m)) return 'Código não encontrado ou expirado.'
   return m

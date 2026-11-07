@@ -10,7 +10,7 @@ São quatro frentes num único projeto React + TypeScript (Vite):
 | `#/app` | App do paciente: as 10 telas do protótipo, mais login, onboarding completo (5 passos), peso e treino |
 | `#/pro` | **Canetolino Pro**: painel do profissional (pacientes, resumo, relatório em PDF, convites) |
 | `#/clinic` | **Canetolino Clinic**: painel da clínica (indicadores agregados, equipe e papéis, convites, plano) |
-| `#/admin` | **Admin**: equipe Canetolino (verificação de profissionais, números gerais). Usuário `Admin`, com verificação em duas etapas |
+| `#/admin` | **Admin**: equipe Canetolino (verificação de profissionais, números gerais). Usuário `Admin` |
 
 ## Rodar
 
@@ -27,8 +27,8 @@ Build de produção: `npm run build` (sai em `dist/`).
 
 Projeto **canetolino** na organização Domma Tecnologia, região **sa-east-1 (São Paulo)**. Tudo fica na nuvem: não existe modo local nem conta de demonstração.
 
-- **Contas:** e-mail e senha. Os painéis Pro e Clinic exigem verificação em duas etapas (app autenticador, TOTP).
-- **Banco:** `supabase/migrations/` tem o esquema completo com RLS. A função `pode_ler` libera o dono e, para profissional ou clínica, só os módulos autorizados, dentro do prazo e com sessão em dois fatores.
+- **Contas:** e-mail e senha. Os painéis entram com e-mail e senha (a verificação em duas etapas foi retirada a pedido).
+- **Banco:** `supabase/migrations/` tem o esquema completo com RLS. A função `pode_ler` libera o dono e, para profissional ou clínica, só os módulos autorizados, dentro do prazo.
 - **Funções de servidor (RPC):** `autorizar_compartilhamento`, `revogar_compartilhamento`, `buscar_codigo`, `pacientes_do_profissional`, `registrar_acesso` (auditoria), `clinica_visao`, `clinica_pacientes`, `clinica_equipe`, `aceitar_convites_clinica`, `excluir_minha_conta`.
 - **Sem internet:** o app guarda os registros no aparelho e envia a diferença assim que a conexão volta.
 - **Códigos de convite:** gerados no cadastro a partir do nome (ex.: `ANA-1234` para a Dra. Ana, `VID-5678` para a Clínica Vida); o Pro também gera códigos avulsos de 7 dias.
@@ -75,7 +75,7 @@ Sem plano gratuito. Valores em `src/data/planos.ts`: **Básico R$ 9,90/mês** (R
 ## Como testar o fluxo completo
 
 1. Em `#/app`, crie a conta e faça o onboarding.
-2. Em `#/pro`, crie a conta profissional, ative o app autenticador e copie seu código de convite.
+2. Em `#/pro`, crie a conta profissional e copie seu código de convite.
 3. No app, em **Perfil → Compartilhar**, use o código. O paciente aparece no Pro, e o acesso fica no **Histórico de acessos** do paciente.
 4. Revogue no app: o paciente some do Pro na próxima atualização (até 20 s).
 5. Em `#/clinic`, cadastre a clínica, convide profissionais pelo e-mail e envie o código da clínica aos pacientes. O papel Recepção não vê dados de paciente.

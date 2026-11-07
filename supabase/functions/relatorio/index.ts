@@ -1,6 +1,6 @@
 // Canetolino · relatório em PDF gerado no servidor (POST /reports/pdf do descritivo)
 // Lê os dados com a sessão de quem pediu: as regras de RLS limitam o relatório ao que essa
-// pessoa pode ver (paciente: tudo; profissional: só módulos autorizados, com segundo fator).
+// pessoa pode ver (paciente: tudo; profissional: só módulos autorizados).
 // Marca a origem de cada dado (registrado pelo paciente ou estimado pela IA) e cita as fontes.
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from 'npm:pdf-lib@1.17.1'
 import { createClient } from 'npm:@supabase/supabase-js@2.119.0'

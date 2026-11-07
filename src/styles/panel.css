@@ -118,10 +118,6 @@
 .p-login__form { display: grid; place-items: center; padding: 40px 24px; }
 .p-login__form form { width: min(100%, 400px); }
 .p-login__form h2 { font-size: 30px; margin-bottom: 6px; }
-.p-otp { position: relative; display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; margin-top: 18px; }
-.p-otp span { height: 58px; border: 1.5px solid var(--borda); border-radius: 14px; display: grid; place-items: center; font-family: var(--f-titulo); font-size: 26px; font-weight: 900; color: var(--roxo); background: #fff; transition: border-color .2s, box-shadow .2s; }
-.p-otp span.is-ativo { border-color: var(--violeta-claro); box-shadow: 0 0 0 4px rgba(147,112,224,.18); }
-.p-otp__input { position: absolute; inset: 0; opacity: 0; width: 100%; cursor: text; }
 @media (max-width: 800px) { .p-login { grid-template-columns: 1fr; } .p-login__arte { padding: 40px 20px 30px; } .p-login__arte .mascot { width: 120px; height: auto; } }
 
 @media print {

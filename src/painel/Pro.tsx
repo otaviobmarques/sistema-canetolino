@@ -465,7 +465,6 @@ function Conta({ prof, email }: { prof: Profissional; email: string }) {
         </div>
         <div className="p-card">
           <span className="p-sobre">Segurança</span>
-          <p style={{ marginTop: 10 }}><Icon name="shield" size={18} className="p-inline-ic" /> Verificação em duas etapas <b>ativa</b></p>
           <p style={{ marginTop: 8 }}><Icon name="eye" size={18} className="p-inline-ic" /> Todo acesso a dados de pacientes gera registro de auditoria visível para o paciente.</p>
         </div>
       </div>

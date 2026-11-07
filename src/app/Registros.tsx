@@ -7,7 +7,9 @@ import { Modal, soltarConfete, useToast } from '../components/ui'
 import { buscarAlimentos, CITACAO, itemDeAlimento, itemDeRotulo, mudarPorcao, type Alimento } from '../lib/alimentos'
 import { ErroIA, refeicaoPorFoto, refeicaoPorTexto, type ItemIA } from '../lib/ia'
 import { SINTOMAS, SINTOMAS_ALERTA, useStore, type AlimentoRotulo, type ItemRefeicao } from '../data/store'
-import { diasEntre, horaBR, num, uid } from '../lib/datas'
+import { diasEntre, ehHoje, horaBR, num, uid } from '../lib/datas'
+import { dataDaFoto } from '../lib/exif'
+import { paraData, paraHora } from './Doses'
 
 /* ======================= 4. Registrar (+) ======================= */
 export function Registrar() {
@@ -139,7 +141,8 @@ export function Refeicao() {
   const [removidos, setRemovidos] = useState<(ItemRefeicao & { uid: string })[]>([])
   const [editando, setEditando] = useState<string | null>(null)
   const [busca, setBusca] = useState('')
-  const [hora] = useState(new Date())
+  const [hora, setHora] = useState(new Date())
+  const [horaDaFoto, setHoraDaFoto] = useState(false)
   const timer = useRef<number>(0)
   const rec = useRef<SR | null>(null)
   const origem = modo === 'manual' ? 'manual' : 'ia_estimativa'
@@ -171,9 +174,17 @@ export function Refeicao() {
     }
   }
 
-  const onFoto = (f?: File) => {
+  const onFoto = async (f?: File, daGaleria = false) => {
     if (!f) return
     setFoto(URL.createObjectURL(f))
+    // foto antiga da galeria: a refeição vai para o horário em que a foto foi tirada (dá para mudar na revisão)
+    if (daGaleria) {
+      const d = await dataDaFoto(f).catch(() => null)
+      if (d && Math.abs(Date.now() - +new Date(d.iso)) > 30 * 60000 && +new Date(d.iso) <= Date.now()) {
+        setHora(new Date(d.iso))
+        setHoraDaFoto(true)
+      }
+    }
     analisar(refeicaoPorFoto(f))
   }
 
@@ -254,7 +265,7 @@ export function Refeicao() {
           <Icon name="back" />
         </button>
         <h1 className="titulo-tela" style={{ fontSize: 24 }}>
-          {tipoPorHora(hora)} · {horaBR(hora)}
+          {tipoPorHora(hora)} · {ehHoje(hora) ? horaBR(hora) : `${hora.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}, ${horaBR(hora)}`}
         </h1>
       </div>
 
@@ -264,13 +275,17 @@ export function Refeicao() {
             {modo === 'foto' && (
               <>
                 <label className="captura-foto">
-                  <input type="file" accept="image/*" capture="environment" onChange={(e) => onFoto(e.target.files?.[0])} className="sr-only" />
+                  <input type="file" accept="image/*" capture="environment" aria-label="Tirar foto agora" onChange={(e) => onFoto(e.target.files?.[0])} className="sr-only" />
                   <span className="captura-foto__mira" aria-hidden>
                     <i /><i /><i /><i />
                   </span>
                   <Icon name="camera" size={40} />
-                  <b>Tirar ou escolher foto</b>
+                  <b>Tirar foto agora</b>
                   <span className="legenda">A foto é reduzida antes do envio</span>
+                </label>
+                <label className="btn btn--contorno btn--bloco" style={{ marginTop: 10, cursor: 'pointer' }}>
+                  <input type="file" accept="image/*" aria-label="Escolher da galeria" onChange={(e) => { onFoto(e.target.files?.[0], true); e.target.value = '' }} className="sr-only" />
+                  <Icon name="upload" size={20} /> Escolher da galeria
                 </label>
                 <p className="legenda" style={{ textAlign: 'center', marginTop: 10 }}>A foto é analisada pela IA e não fica guardada.</p>
               </>
@@ -332,6 +347,22 @@ export function Refeicao() {
                 {foto ? <img src={foto} alt="Foto da refeição" /> : <PratoIlustrado />}
               </div>
             )}
+            <div className="quando-refeicao">
+              <label className="rotulo" htmlFor="ref-quando">Quando foi?</label>
+              <input
+                id="ref-quando"
+                className="campo"
+                type="datetime-local"
+                max={`${paraData(new Date())}T23:59`}
+                value={`${paraData(hora)}T${paraHora(hora)}`}
+                onChange={(e) => {
+                  const d = new Date(e.target.value)
+                  if (!Number.isNaN(+d) && d.getTime() <= Date.now() + 60000) setHora(d)
+                  setHoraDaFoto(false)
+                }}
+              />
+              {horaDaFoto && <small className="legenda">Horário em que a foto foi tirada. Altere se não for o da refeição.</small>}
+            </div>
             {modo !== 'manual' && (
               <div className="dica-dose" style={{ marginTop: 12 }}>
                 <Mascot expressao="feliz" size={34} flutuar={false} />

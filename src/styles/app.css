@@ -358,3 +358,6 @@ label.btn.is-ocupado { opacity: .6; pointer-events: none; }
 .total-aplicacoes b { color: var(--roxo); }
 .jornada-dose { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 10px; align-items: center; margin-top: 10px; }
 .jornada-dose .rotulo { margin: 0; }
+.quando-refeicao { margin-top: 12px; }
+.quando-refeicao .rotulo { margin-top: 0; }
+.quando-refeicao small { display: block; margin-top: 4px; }

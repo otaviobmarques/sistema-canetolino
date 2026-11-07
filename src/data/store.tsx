@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { DIA_MS, diasEntre, ehHoje, inicioDoDia, mesmoDia } from '../lib/datas'
 import { erroPt, sb, urlRetorno } from '../lib/supabase'
+import { cancelarAssinatura } from '../lib/pagamentos'
 import { carregar, mapearShares, sincronizar } from './nuvem'
 import { apagarTodasAsFotos } from '../lib/fotos'
 
@@ -495,6 +496,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   )
 
   const excluirConta = useCallback(async () => {
+    // cancela a assinatura no gateway antes; sem isso a cobrança continuaria depois da exclusão
+    await cancelarAssinatura(c)
     if (atual.current.userId) await apagarTodasAsFotos(atual.current.userId)
     const { error } = await c.rpc('excluir_minha_conta')
     if (error) throw error

@@ -10,6 +10,7 @@ import { erroPt } from '../lib/supabase'
 import { AuthPainel, usePainel } from './Auth'
 import { Bloqueado, Cabecalho, PainelLayout } from './Layout'
 import Pagamentos from './Pagamentos'
+import Usuarios from './Usuarios'
 
 /* Painel da equipe Canetolino: verificação de profissionais e números gerais.
    Não mostra dados de saúde de pacientes (LGPD): só contagens. */
@@ -20,6 +21,7 @@ type Clinica = { id: string; nome: string; cnpj: string | null; codigo: string; 
 
 const ITENS = [
   { to: '/admin', nome: 'Visão geral', icone: 'grid' as const, end: true },
+  { to: '/admin/usuarios', nome: 'Usuários', icone: 'user' as const },
   { to: '/admin/profissionais', nome: 'Profissionais', icone: 'shield' as const },
   { to: '/admin/clinicas', nome: 'Clínicas', icone: 'users' as const },
   { to: '/admin/pagamentos', nome: 'Pagamentos', icone: 'wallet' as const },
@@ -45,7 +47,7 @@ export default function AdminPainel() {
         c={c}
         estado={estado}
         onPronto={avaliar}
-        descricao="Área da equipe Canetolino: verificação de profissionais e números gerais da plataforma."
+        descricao="Área da equipe Canetolino: usuários, verificação de profissionais, pagamentos e números gerais."
         tituloCadastro=""
         camposCadastro={[]}
         metaCadastro={() => ({})}
@@ -67,6 +69,7 @@ export default function AdminPainel() {
     <PainelLayout sufixo="Admin" itens={ITENS} usuario={{ nome: 'Admin', papel: 'Equipe Canetolino' }} onSair={sair}>
       <Routes>
         <Route index element={<Visao c={c} />} />
+        <Route path="usuarios" element={<Usuarios c={c} />} />
         <Route path="profissionais" element={<Profissionais c={c} />} />
         <Route path="clinicas" element={<Clinicas c={c} />} />
         <Route path="pagamentos" element={<Pagamentos c={c} />} />

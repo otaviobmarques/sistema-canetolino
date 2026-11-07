@@ -107,3 +107,7 @@ Sem plano gratuito. Valores em `src/data/planos.ts`: **Básico R$ 9,90/mês** (R
   `https://mmxoenkeuyvjvahkofik.supabase.co/functions/v1/pagamentos/webhook/{asaas|mercadopago|stripe}`
   (a mesma URL serve aos dois modos: o token/segredo que bate diz se o aviso é de teste ou de produção).
 - Preços definidos no servidor. O `profiles.plano` só muda quando o gateway confirma o pagamento (o paciente não consegue alterá-lo pela API).
+
+## Usuários (Admin)
+
+Em **Admin → Usuários**: cadastrar contas (paciente, profissional, clínica ou administrador) já com senha e e-mail confirmado, trocar senha, bloquear/desbloquear (desconecta na hora) e excluir (cancela a assinatura no gateway e apaga fotos e dados). Feito pela Edge Function `admin-usuarios`, que só aceita administradores; ninguém pode excluir a própria conta nem o último administrador.

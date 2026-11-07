@@ -2,6 +2,7 @@
 // O gateway (Asaas, Mercado Pago ou Stripe) e o modo (teste ou produção) são escolhidos no painel Admin.
 //   POST /pagamentos/checkout           (sessão do paciente) cria a assinatura e devolve o link de pagamento
 //   POST /pagamentos/cancelar           (sessão do paciente) cancela a assinatura no gateway
+//   POST /pagamentos/admin-cancelar     (sessão do Admin) cancela as assinaturas de uma conta antes de excluí-la
 //   POST /pagamentos/webhook/<gateway>  avisos do gateway; a autenticidade é conferida com o token/segredo
 //                                       de teste ou de produção, e o modo sai de qual deles bateu
 // Os preços ficam aqui no servidor: o app nunca define quanto será cobrado.
@@ -264,11 +265,28 @@ async function cancelar(req: Request) {
   const token = (req.headers.get('Authorization') ?? '').replace(/^Bearer /, '')
   const { data: u } = await db.auth.getUser(token)
   if (!u?.user) return json({ erro: 'sessao' }, 401)
-  const { data } = await db.from('assinaturas').select('*').eq('user_id', u.user.id).in('status', ['ativa', 'atrasada', 'pendente'])
+  await cancelarTudo(u.user.id)
+  return json({ ok: true })
+}
+
+async function cancelarTudo(userId: string) {
+  const { data } = await db.from('assinaturas').select('*').eq('user_id', userId).in('status', ['ativa', 'atrasada', 'pendente'])
   for (const a of (data ?? []) as Assinatura[]) {
     if (a.assinatura_externa) await cancelarNoGateway(a)
     await aplicar(a, { status: 'cancelada' })
   }
+}
+
+/** Usado pelo painel Admin antes de excluir uma conta: cancela as cobranças dessa pessoa. */
+async function adminCancelar(req: Request) {
+  const cliente = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_ANON_KEY')!, {
+    auth: { persistSession: false }, global: { headers: { Authorization: req.headers.get('Authorization') ?? '' } },
+  })
+  const { data: admin } = await cliente.rpc('eh_admin')
+  if (admin !== true) return json({ erro: 'sem_acesso' }, 403)
+  const { user_id } = await req.json().catch(() => ({}))
+  if (!user_id) return json({ erro: 'usuario' }, 400)
+  await cancelarTudo(String(user_id))
   return json({ ok: true })
 }
 
@@ -389,6 +407,7 @@ Deno.serve(async (req) => {
   try {
     if (caminho === '/checkout') return await checkout(req)
     if (caminho === '/cancelar') return await cancelar(req)
+    if (caminho === '/admin-cancelar') return await adminCancelar(req)
     if (caminho === '/webhook/asaas') return await webhookAsaas(req)
     if (caminho === '/webhook/mercadopago') return await webhookMercadoPago(req)
     if (caminho === '/webhook/stripe') return await webhookStripe(req)

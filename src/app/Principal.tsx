@@ -436,7 +436,6 @@ export function Radar() {
         style={{ marginTop: 14 }}
         disabled={baixando}
         onClick={async () => {
-          if (s.perfil.plano !== 'premium') return nav('/app/planos')
           setBaixando(true)
           try {
             await baixarRelatorio(sb('app'), null, 30, s.perfil.nome || 'meu')
@@ -448,7 +447,6 @@ export function Radar() {
         }}
       >
         <Icon name="download" size={20} /> {baixando ? 'Gerando PDF…' : 'Baixar meu relatório (30 dias)'}
-        {s.perfil.plano !== 'premium' && <span className="selo selo--roxo" style={{ padding: '1px 8px' }}>Premium</span>}
       </button>
       <BotaoMinhaFicha style={{ marginTop: 10 }} />
       <button className="btn btn--contorno btn--bloco" style={{ marginTop: 10 }} onClick={() => nav('/app/perfil/compartilhar')}>

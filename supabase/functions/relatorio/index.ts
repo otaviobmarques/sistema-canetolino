@@ -142,7 +142,6 @@ Deno.serve(async (req) => {
   let pesoInicial: number | null = null
   if (proprio) {
     const { data: p } = await c.from('profiles').select('nome, plano, meta_proteina_g, altura_cm, peso_inicial_kg').eq('user_id', u.user.id).maybeSingle()
-    if (p?.plano !== 'premium') return json({ erro: 'premium' }, 402)
     nome = p?.nome || nome
     metaProt = p?.meta_proteina_g ?? 100
     altura = p?.altura_cm ?? null

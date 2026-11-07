@@ -13,14 +13,29 @@ export async function baixarRelatorio(c: SupabaseClient, pacienteId: string | nu
         /* sem JSON */
       }
     }
-    throw new Error(codigo === 'premium' ? 'O relatório em PDF faz parte do plano Premium.' : codigo === 'sem_acesso' ? 'Sem acesso a este paciente agora.' : 'Não consegui gerar o relatório. Tente de novo.')
+    throw new Error(codigo === 'sem_acesso' ? 'Sem acesso a este paciente agora.' : 'Não consegui gerar o relatório. Tente de novo.')
   }
   const blob = data instanceof Blob ? data : new Blob([data as ArrayBuffer], { type: 'application/pdf' })
+  await entregarPdf(blob, `Relatório ${nome || 'paciente'} ${dias} dias - Canetolino.pdf`)
+}
+
+/** No celular abre o menu de compartilhar (salvar, imprimir, enviar); no computador, baixa o arquivo. */
+export async function entregarPdf(blob: Blob, nomeArquivo: string) {
+  const arquivo = nomeArquivo.replace(/[\\/:*?"<>|]/g, '')
+  const file = new File([blob], arquivo, { type: 'application/pdf' })
+  if (/iphone|ipad|ipod|android/i.test(navigator.userAgent) && navigator.canShare?.({ files: [file] })) {
+    try {
+      await navigator.share({ files: [file], title: arquivo.replace(/\.pdf$/, '') })
+      return
+    } catch (e) {
+      if ((e as Error).name === 'AbortError') return // a pessoa fechou o menu
+    }
+  }
   const a = document.createElement('a')
   a.href = URL.createObjectURL(blob)
-  a.download = `canetolino-${nome.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '-')}-${dias}d.pdf`
+  a.download = arquivo
   a.click()
-  setTimeout(() => URL.revokeObjectURL(a.href), 5000)
+  setTimeout(() => URL.revokeObjectURL(a.href), 10000)
 }
 
 /**
@@ -41,20 +56,5 @@ export async function baixarFicha(c: SupabaseClient, pacienteId: string | null, 
     throw new Error(codigo === 'sem_acesso' ? 'Sem acesso a este paciente agora.' : 'Não consegui gerar a ficha. Tente de novo.')
   }
   const blob = data instanceof Blob ? data : new Blob([data as ArrayBuffer], { type: 'application/pdf' })
-  const arquivo = `Ficha ${nome || 'paciente'} - Canetolino.pdf`.replace(/[\\/:*?"<>|]/g, '')
-  const file = new File([blob], arquivo, { type: 'application/pdf' })
-  const celular = /iphone|ipad|ipod|android/i.test(navigator.userAgent)
-  if (celular && navigator.canShare?.({ files: [file] })) {
-    try {
-      await navigator.share({ files: [file], title: 'Ficha do paciente · Canetolino' })
-      return
-    } catch (e) {
-      if ((e as Error).name === 'AbortError') return // a pessoa fechou o menu
-    }
-  }
-  const a = document.createElement('a')
-  a.href = URL.createObjectURL(blob)
-  a.download = arquivo
-  a.click()
-  setTimeout(() => URL.revokeObjectURL(a.href), 10000)
+  await entregarPdf(blob, `Ficha ${nome || 'paciente'} - Canetolino.pdf`)
 }

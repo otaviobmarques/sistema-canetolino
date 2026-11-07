@@ -46,6 +46,11 @@ async function montarPaciente(c: SupabaseClient, l: LinhaPaciente): Promise<Paci
   const partes: string[] = []
   if (m.includes('nutricao')) partes.push(w.proteinaMedia ? `Proteína na meta em ${w.diasProteinaMeta} de 7 dias (média ${w.proteinaMedia} g/dia). Água na meta em ${w.diasAguaMeta} dias.` : 'Sem refeições registradas na semana.')
   if (m.includes('peso') && s.pesos.length > 1) partes.push(up.kg < pesoIni ? 'Peso em queda desde o início.' : 'Peso estável ou em alta desde o início.')
+  if (m.includes('peso')) {
+    const cint = [...s.medidas].filter((x) => x.tipo === 'cintura').sort((a, b) => +new Date(a.em) - +new Date(b.em))
+    if (cint.length > 1) partes.push(`Cintura: ${num(cint[cint.length - 1].cm)} cm (${cint[cint.length - 1].cm <= cint[0].cm ? '−' : '+'}${num(Math.abs(cint[cint.length - 1].cm - cint[0].cm))} cm desde o primeiro registro).`)
+    else if (cint.length === 1) partes.push(`Cintura: ${num(cint[0].cm)} cm.`)
+  }
   if (m.includes('sintomas')) partes.push(w.sintomasSemana.length ? `Sintomas na semana: ${[...new Set(w.sintomasSemana.flatMap((x) => x.sintomas))].join(', ').toLowerCase()}.` : 'Nenhum sintoma registrado.')
   if (m.includes('aplicacoes')) partes.push(`${Math.min(apl, 4)} de 4 aplicações registradas nas últimas 4 semanas.`)
   if (m.includes('bemestar')) partes.push(`${w.treinosForca} treino(s) de força na semana.`)

@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import type { Compartilhamento, Estado, Local, Modulo, Refeicao } from './store'
+import type { Compartilhamento, Estado, Local, Modulo, Refeicao, TipoMedida } from './store'
 
 /* =====================================================================
    Ponte entre o estado do app (Estado) e as tabelas do Supabase.
@@ -19,7 +19,7 @@ async function tudo<T = Linha>(q: PromiseLike<{ data: T[] | null; error: unknown
 
 /** Lê as tabelas de saúde de um paciente (o próprio, ou um paciente que autorizou o profissional). */
 export async function lerSaude(c: SupabaseClient, uid: string, base: Estado): Promise<Estado> {
-  const [apl, agua, pesos, sint, trein, canetas, compras, meals, itens, med, presc, sched] = await Promise.all([
+  const [apl, agua, pesos, sint, trein, canetas, compras, meals, itens, med, presc, sched, medidas] = await Promise.all([
     tudo(c.from('applications').select('*').eq('user_id', uid).order('aplicado_em')),
     tudo(c.from('hydration_records').select('*').eq('user_id', uid).order('registrado_em')),
     tudo(c.from('weight_records').select('*').eq('user_id', uid).order('registrado_em')),
@@ -32,6 +32,7 @@ export async function lerSaude(c: SupabaseClient, uid: string, base: Estado): Pr
     tudo(c.from('medications').select('*').eq('user_id', uid).eq('status', 'ativo').order('created_at', { ascending: false }).limit(1)),
     tudo(c.from('prescriptions').select('*').eq('user_id', uid)),
     tudo(c.from('application_schedules').select('*').eq('user_id', uid)),
+    tudo(c.from('measurements').select('*').eq('user_id', uid).order('registrado_em')),
   ])
   const m = med[0]
   const p = m && presc.find((x) => x.medication_id === m.id)
@@ -44,6 +45,7 @@ export async function lerSaude(c: SupabaseClient, uid: string, base: Estado): Pr
     aplicacoes: apl.map((r) => ({ id: r.id as string, em: iso(r.aplicado_em), local: r.local as Local, obs: (r.observacao as string) ?? undefined })),
     agua: agua.map((r) => ({ id: r.id as string, ml: r.ml as number, em: iso(r.registrado_em) })),
     pesos: pesos.map((r) => ({ id: r.id as string, kg: Number(r.peso_kg), em: iso(r.registrado_em) })),
+    medidas: medidas.map((r) => ({ id: r.id as string, tipo: r.tipo as TipoMedida, cm: Number(r.medida_cm), em: iso(r.registrado_em) })),
     sintomas: sint.map((r) => ({ id: r.id as string, em: iso(r.registrado_em), sintomas: r.sintomas as string[], intensidade: r.intensidade as number, obs: (r.observacao as string) ?? undefined, alerta: !!r.alerta_disparado })),
     treinos: trein.map((r) => ({ id: r.id as string, em: iso(r.registrado_em), tipo: r.tipo as string, duracao_min: r.duracao_min as number, forca: !!r.forca })),
     canetas: canetas.map((r) => ({ id: r.id as string, nome: (r.nome as string) ?? '', lote: (r.lote as string) ?? '', validade: (r.validade as string) ?? '', quantidade: r.quantidade as number })),
@@ -61,12 +63,13 @@ export async function lerSaude(c: SupabaseClient, uid: string, base: Estado): Pr
 
 /** Carrega a conta inteira do paciente logado. */
 export async function carregar(c: SupabaseClient, uid: string, base: Estado): Promise<Estado> {
-  const [{ data: perfil, error }, saude, shares, consent, audit] = await Promise.all([
+  const [{ data: perfil, error }, saude, shares, consent, audit, rotulo] = await Promise.all([
     c.from('profiles').select('*').eq('user_id', uid).maybeSingle(),
     lerSaude(c, uid, base),
     c.rpc('meus_compartilhamentos'),
     tudo(c.from('consent_records').select('*').eq('user_id', uid).order('aceito_em')),
     tudo(c.from('audit_logs').select('*').eq('paciente_id', uid).order('em', { ascending: false }).limit(50)),
+    tudo(c.from('user_foods').select('*').eq('user_id', uid).order('created_at')),
   ])
   if (error) throw error
   const pr = (perfil ?? {}) as Linha
@@ -87,6 +90,7 @@ export async function carregar(c: SupabaseClient, uid: string, base: Estado): Pr
       plano: (pr.plano as 'basico' | 'premium') ?? 'basico',
     },
     config: { ...base.config, ...((pr.config as object) ?? {}) },
+    alimentosRotulo: rotulo.map((r) => ({ id: r.id as string, nome: r.nome as string, porcao_g: Number(r.porcao_g), porcao_texto: (r.porcao_texto as string) ?? undefined, proteina_g: Number(r.proteina_g), energia_kcal: r.energia_kcal == null ? undefined : Number(r.energia_kcal) })),
     compartilhamentos: mapearShares((shares.data as Linha[]) ?? []),
     consentimentos: consent.map((r) => ({ id: r.id as string, tipo: r.tipo as 'termos', versao: r.versao_texto as string, em: iso(r.aceito_em), detalhe: (r.detalhe as string) ?? undefined })),
     auditoria: audit.reverse().map((r) => ({ id: String(r.id), ator: r.ator_nome as string, acao: r.acao as string, em: iso(r.em) })),
@@ -117,6 +121,8 @@ const COLECOES: Partial<Record<keyof Estado, Mapa<never>>> = {
   sintomas: { tabela: 'symptoms', linha: (x: Estado['sintomas'][number], uid) => ({ id: x.id, user_id: uid, sintomas: x.sintomas, intensidade: x.intensidade, observacao: x.obs ?? null, alerta_disparado: x.alerta, registrado_em: x.em }) } as Mapa<never>,
   treinos: { tabela: 'workouts', linha: (x: Estado['treinos'][number], uid) => ({ id: x.id, user_id: uid, tipo: x.tipo, duracao_min: x.duracao_min, forca: x.forca, registrado_em: x.em }) } as Mapa<never>,
   canetas: { tabela: 'pen_inventory', linha: (x: Estado['canetas'][number], uid) => ({ id: x.id, user_id: uid, nome: x.nome, lote: x.lote, validade: x.validade, quantidade: x.quantidade }) } as Mapa<never>,
+  medidas: { tabela: 'measurements', linha: (x: Estado['medidas'][number], uid) => ({ id: x.id, user_id: uid, tipo: x.tipo, medida_cm: x.cm, registrado_em: x.em }) } as Mapa<never>,
+  alimentosRotulo: { tabela: 'user_foods', linha: (x: Estado['alimentosRotulo'][number], uid) => ({ id: x.id, user_id: uid, nome: x.nome, porcao_g: x.porcao_g, porcao_texto: x.porcao_texto ?? null, proteina_g: x.proteina_g, energia_kcal: x.energia_kcal ?? null }) } as Mapa<never>,
   compras: { tabela: 'pen_purchases', linha: (x: Estado['compras'][number], uid) => ({ id: x.id, user_id: uid, data: x.em, valor_centavos: x.valor_centavos, quantidade: x.quantidade }) } as Mapa<never>,
 }
 
@@ -181,7 +187,7 @@ export async function sincronizar(c: SupabaseClient, uid: string, antes: Estado,
       await ok(c.from('meals').upsert({ id: r.id, user_id: uid, tipo: r.tipo, horario: r.em, origem: r.origem, versao_tabela: r.versao_tabela, updated_at: new Date().toISOString() }))
       await ok(c.from('meal_items').delete().eq('meal_id', r.id))
       if (r.itens.length)
-        await ok(c.from('meal_items').insert(r.itens.map((i) => ({ meal_id: r.id, user_id: uid, food_id: i.foodId || null, nome: i.nome, porcao_g: i.porcao_g, porcao_texto: i.porcao_texto, proteina_g: i.proteina_g, energia_kcal: i.energia_kcal, origem: i.origem }))))
+        await ok(c.from('meal_items').insert(r.itens.map((i) => ({ meal_id: r.id, user_id: uid, food_id: i.foodId && !i.foodId.startsWith('rotulo:') ? i.foodId : null, nome: i.nome, porcao_g: i.porcao_g, porcao_texto: i.porcao_texto, proteina_g: i.proteina_g, energia_kcal: i.energia_kcal, origem: i.origem }))))
     }
     if (d.apagar.length) await ok(c.from('meals').delete().in('id', d.apagar))
     salvo.refeicoes = agora.refeicoes

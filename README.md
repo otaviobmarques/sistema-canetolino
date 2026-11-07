@@ -32,10 +32,22 @@ Projeto **canetolino** na organização Domma Tecnologia, região **sa-east-1 (S
 - **Sem internet:** o app guarda os registros no aparelho e envia a diferença assim que a conexão volta.
 - **Códigos de convite:** gerados no cadastro a partir do nome (ex.: `ANA-1234` para a Dra. Ana, `VID-5678` para a Clínica Vida); o Pro também gera códigos avulsos de 7 dias.
 
-### Configuração pendente no painel do Supabase
+### E-mail (Resend + Supabase)
 
-1. **Authentication → URL Configuration:** Site URL `https://sistema-canetolino.vercel.app` e, em Redirect URLs, `https://sistema-canetolino.vercel.app/**` (os links de confirmação e de nova senha voltam para cá).
-2. **Authentication → SMTP:** o envio padrão do Supabase só manda e-mail para membros da organização. Para pacientes e profissionais receberem a confirmação, configure um SMTP próprio (Resend, por exemplo).
+Domínio `canetolino.com.br` criado no Resend (região sa-east-1), com chave só de envio restrita a ele. Passo a passo em `docs/configurar-email.md`; modelos em português em `supabase/templates/`.
+
+## Alimentos
+
+Base unificada do repositório `otaviobmarques/fontes-ref`: **18.245 alimentos** (TACO 592, TBCA 5.849, POF 1.936, USDA 7.024, CoFID 2.844), por 100 g, com medidas caseiras quando a fonte traz. Ficam de fora os registros marcados como incompletos ou inconsistentes na própria fonte.
+
+- Busca sem acento (`buscar_alimentos`), com itens do dia a dia e fontes brasileiras primeiro.
+- A fonte de cada valor aparece na tela (condição de uso da TACO e das demais).
+- **Alimentos do rótulo:** a pessoa cadastra produtos de marca (whey, barras…) com a proteína da embalagem.
+- Reimportar: `python3 scripts/importar_alimentos.py ../fontes-ref/unificado/alimentos.json > alimentos.sql`.
+
+## Evolução
+
+Peso, medidas corporais (cintura, abdômen, quadril, peito, braço, coxa, pescoço) e fotos de evolução por ângulo, com comparação antes e depois. As fotos ficam só no aparelho por padrão; com a opção desligada no Perfil, vão para o Storage privado `evolucao/` (só a própria pessoa lê). Fotos nunca entram no compartilhamento com profissionais. Medidas entram no módulo "peso e medidas".
 
 ## IA (Claude, da Anthropic)
 
@@ -72,8 +84,8 @@ Sem plano gratuito. Valores em `src/data/planos.ts`: **Básico R$ 9,90/mês** (R
 
 ## Próximos passos
 
-- **IA:** ampliar a tabela `foods` com a TACO/TBCA completa e medir a precisão com um conjunto de fotos de refeições brasileiras.
-- **Telas que faltam:** busca de alimentos completa, medidas e fotos de evolução, assinatura dos planos.
+- **IA:** medir a precisão com um conjunto de fotos de refeições brasileiras.
+- **Assinatura:** a tela de planos está pronta; a cobrança será feita pelas lojas no app nativo.
 - **App nativo** (Flutter ou React Native) para as lojas, com notificações push.
 - Revisão clínica da lista de sintomas de alerta, revisão jurídica (LGPD) e avaliação do enquadramento na Anvisa.
 

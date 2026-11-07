@@ -4,9 +4,9 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import Icon, { type IconName } from '../components/Icon'
 import Mascot from '../components/Mascot'
 import { Modal, soltarConfete, useToast } from '../components/ui'
-import { FOODS, VERSAO_TABELA } from '../data/foods'
+import { buscarAlimentos, CITACAO, itemDeAlimento, itemDeRotulo, mudarPorcao, type Alimento } from '../lib/alimentos'
 import { ErroIA, refeicaoPorFoto, refeicaoPorTexto, type ItemIA } from '../lib/ia'
-import { criarItem, SINTOMAS, SINTOMAS_ALERTA, ultimoPeso, useStore, type ItemRefeicao } from '../data/store'
+import { SINTOMAS, SINTOMAS_ALERTA, useStore, type AlimentoRotulo, type ItemRefeicao } from '../data/store'
 import { diasEntre, horaBR, num, uid } from '../lib/datas'
 
 /* ======================= 4. Registrar (+) ======================= */
@@ -26,7 +26,7 @@ export function Registrar() {
     { icone: 'meal', nome: 'Refeição', acao: () => nav('/app/registrar/refeicao?modo=manual') },
     { icone: 'drop', nome: 'Água', acao: () => setAgua(true) },
     { icone: 'pen', nome: 'Aplicação', acao: () => nav('/app/jornada') },
-    { icone: 'scale', nome: 'Peso', acao: () => nav('/app/registrar/peso') },
+    { icone: 'scale', nome: 'Peso e medidas', acao: () => nav('/app/evolucao?aba=peso') },
     { icone: 'sad', nome: 'Sintoma', acao: () => nav('/app/registrar/sintoma') },
     { icone: 'dumbbell', nome: 'Treino', acao: () => nav('/app/registrar/treino') },
   ]
@@ -126,7 +126,7 @@ export function Refeicao() {
   const [params] = useSearchParams()
   const modo = (params.get('modo') ?? 'foto') as 'foto' | 'voz' | 'texto' | 'manual'
   const nav = useNavigate()
-  const { set } = useStore()
+  const { s, set } = useStore()
   const toast = useToast()
   const [etapa, setEtapa] = useState<Etapa>(modo === 'manual' ? 'revisao' : 'captura')
   const [foto, setFoto] = useState<string | null>(null)
@@ -158,7 +158,7 @@ export function Refeicao() {
       const achados = sugeridos.filter((i) => !i.nao_encontrado)
       setFaltaram(sugeridos.filter((i) => i.nao_encontrado).map((i) => i.nome))
       if (!sugeridos.length) return setEtapa('nao-reconheci')
-      setItens(achados.map((i) => ({ foodId: i.food_id, nome: i.nome, porcao_g: i.porcao_g, porcao_texto: i.porcao_texto, proteina_g: i.proteina_g, energia_kcal: i.energia_kcal, origem: 'ia_estimativa' as const, uid: uid() })))
+      setItens(achados.map((i) => ({ foodId: i.food_id, nome: i.nome, porcao_g: i.porcao_g, porcao_texto: i.porcao_texto, proteina_g: i.proteina_g, energia_kcal: i.energia_kcal, origem: 'ia_estimativa' as const, fonte: i.fonte, uid: uid() })))
       setRemovidos([])
       setEtapa('revisao')
     } catch (e) {
@@ -198,18 +198,43 @@ export function Refeicao() {
   }
 
   const total = itens.reduce((t, i) => t + i.proteina_g, 0)
-  const sugestoes = useMemo(() => {
+  const [resultados, setResultados] = useState<Alimento[]>([])
+  const [buscando, setBuscando] = useState(false)
+  const [rotuloAberto, setRotuloAberto] = useState(false)
+  // busca na base unificada (TACO, TBCA, POF, USDA, CoFID), com pausa curta enquanto digita
+  useEffect(() => {
+    const q = busca.trim()
+    if (q.length < 2) return setResultados([])
+    let vivo = true
+    setBuscando(true)
+    const t = setTimeout(() => {
+      buscarAlimentos(q, 12)
+        .then((r) => vivo && setResultados(r))
+        .catch(() => vivo && setResultados([]))
+        .finally(() => vivo && setBuscando(false))
+    }, 250)
+    return () => {
+      vivo = false
+      clearTimeout(t)
+    }
+  }, [busca])
+  const meusRotulos = useMemo(() => {
     const q = busca.trim().toLowerCase()
     if (q.length < 2) return []
-    return FOODS.filter((f) => f.nome.toLowerCase().includes(q) || f.sinonimos.some((x) => x.includes(q))).slice(0, 5)
-  }, [busca])
+    return q.length < 2 ? [] : s.alimentosRotulo.filter((a) => a.nome.toLowerCase().includes(q)).slice(0, 4)
+  }, [busca, s.alimentosRotulo])
+  const fontesUsadas = [...new Set(itens.map((i) => i.fonte).filter(Boolean))] as string[]
+  const incluir = (i: ItemRefeicao) => {
+    setItens((l) => [...l, { ...i, uid: uid() }])
+    setBusca('')
+  }
 
   const salvar = (e: React.MouseEvent) => {
     set((x) => ({
       ...x,
       refeicoes: [
         ...x.refeicoes,
-        { id: uid(), tipo: tipoPorHora(hora), em: hora.toISOString(), origem, versao_tabela: VERSAO_TABELA, itens: itens.map(({ uid: _u, ...i }) => i) },
+        { id: uid(), tipo: tipoPorHora(hora), em: hora.toISOString(), origem, versao_tabela: fontesUsadas.join(', ') || 'manual', itens: itens.map(({ uid: _u, ...i }) => i) },
       ],
     }))
     soltarConfete({ x: e.clientX, y: e.clientY }, 50)
@@ -317,7 +342,7 @@ export function Refeicao() {
                   <motion.div key={i.uid} layout className="item-ref" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, x: 80, height: 0, marginTop: 0, paddingTop: 0, paddingBottom: 0 }} transition={{ duration: 0.3 }}>
                     <button className="item-ref__info" onClick={() => setEditando(editando === i.uid ? null : i.uid)} aria-expanded={editando === i.uid}>
                       <b>{i.nome}</b>
-                      <span className="legenda">{i.porcao_texto} · editar</span>
+                      <span className="legenda">{i.porcao_texto}{i.fonte ? ` · ${i.fonte === 'rótulo' ? 'rótulo' : i.fonte}` : ''} · editar</span>
                     </button>
                     <b className="item-ref__prot">{Math.round(i.proteina_g)} g prot.</b>
                     <button className="item-ref__x" aria-label={`Remover ${i.nome}`} onClick={() => { setItens((l) => l.filter((x) => x.uid !== i.uid)); setRemovidos((r) => [...r, i]) }}>
@@ -325,16 +350,13 @@ export function Refeicao() {
                     </button>
                     {editando === i.uid && (
                       <div className="item-ref__editar">
+                        {(i.medidas ?? []).slice(0, 4).map((m) => (
+                          <button key={m.nome} className="chip item-ref__medida" onClick={() => setItens((l) => l.map((x) => (x.uid === i.uid ? { ...mudarPorcao(x, m.gramas, `1 ${m.nome} (${m.gramas} g)`), uid: x.uid } : x)))}>
+                            1 {m.nome}
+                          </button>
+                        ))}
                         {[-25, -10, 10, 25].map((d) => (
-                          <button
-                            key={d}
-                            className="chip chip--quadrado"
-                            onClick={() =>
-                              setItens((l) =>
-                                l.map((x) => (x.uid === i.uid ? { ...criarItem(x.foodId, Math.max(10, x.porcao_g + d), x.origem), uid: x.uid } : x)),
-                              )
-                            }
-                          >
+                          <button key={d} className="chip chip--quadrado" onClick={() => setItens((l) => l.map((x) => (x.uid === i.uid ? { ...mudarPorcao(x, x.porcao_g + d), uid: x.uid } : x)))}>
                             {d > 0 ? '+' : ''}
                             {d} g
                           </button>
@@ -357,22 +379,38 @@ export function Refeicao() {
               <Icon name="search" size={18} />
               <input className="campo" placeholder="Incluir alimento (ex.: ovo, whey…)" value={busca} onChange={(e) => setBusca(e.target.value)} aria-label="Buscar alimento" />
             </div>
-            {sugestoes.length > 0 && (
+            {(meusRotulos.length > 0 || resultados.length > 0) && (
               <div className="sugestoes">
-                {sugestoes.map((f) => (
-                  <button key={f.id} onClick={() => { setItens((l) => [...l, { ...criarItem(f.id, undefined, 'manual'), uid: uid() }]); setBusca('') }}>
-                    <span>{f.nome} <span className="legenda">({f.preparo})</span></span>
+                {meusRotulos.map((a) => (
+                  <button key={a.id} onClick={() => incluir(itemDeRotulo(a))}>
+                    <span>{a.nome} <span className="selo selo--lilas" style={{ padding: '1px 7px' }}>rótulo</span></span>
+                    <span className="legenda">{num(a.proteina_g)} g/porção</span>
+                  </button>
+                ))}
+                {resultados.map((f) => (
+                  <button key={f.id} onClick={() => incluir(itemDeAlimento(f))}>
+                    <span>{f.nome} <span className="legenda">· {f.fonte}</span></span>
                     <span className="legenda">{num(f.proteina_100g)} g/100 g</span>
                   </button>
                 ))}
               </div>
             )}
+            {busca.trim().length >= 2 && !buscando && resultados.length === 0 && meusRotulos.length === 0 && (
+              <p className="legenda" style={{ marginTop: 8 }}>Nada encontrado para “{busca}”. Tente outra palavra ou cadastre pelo rótulo.</p>
+            )}
+            <button className="btn-tracejado" style={{ marginTop: 10, minHeight: 44, width: '100%', background: 'none', cursor: 'pointer' }} onClick={() => setRotuloAberto(true)}>
+              + Adicionar pelo rótulo (whey, barra, iogurte de marca…)
+            </button>
 
             <div className="total-ref">
               <b>Total da refeição</b>
               <motion.span key={Math.round(total)} initial={{ scale: 1.12 }} animate={{ scale: 1 }}>{Math.round(total)} g de proteína</motion.span>
             </div>
-            <p className="legenda">Valores da tabela TACO, para o alimento preparado. Itens marcados como estimativa nos relatórios.</p>
+            <p className="legenda">
+              {fontesUsadas.length ? `Valores: ${fontesUsadas.map((f) => CITACAO[f] ?? f).join(' · ')}.` : 'Valores das tabelas TACO (NEPA/UNICAMP), TBCA (USP/FoRC) e POF (IBGE).'}
+              {origem === 'ia_estimativa' && ' Itens marcados como estimativa da IA nos relatórios.'}
+            </p>
+            <ModalRotulo aberto={rotuloAberto} onFechar={() => setRotuloAberto(false)} onSalvar={(a) => { set((x) => ({ ...x, alimentosRotulo: [...x.alimentosRotulo, a] })); incluir(itemDeRotulo(a)); setRotuloAberto(false); toast('Alimento salvo para as próximas vezes') }} />
 
             <div className="duas-col rodape-acao">
               <button className="btn btn--contorno" disabled={!removidos.length} onClick={() => { setItens((l) => [...l, ...removidos]); setRemovidos([]) }}>
@@ -386,6 +424,58 @@ export function Refeicao() {
         )}
       </AnimatePresence>
     </div>
+  )
+}
+
+function ModalRotulo({ aberto, onFechar, onSalvar }: { aberto: boolean; onFechar: () => void; onSalvar: (a: AlimentoRotulo) => void }) {
+  const [v, setV] = useState({ nome: '', porcao: '', proteina: '', kcal: '', texto: '' })
+  const n = (x: string) => Number(x.replace(',', '.'))
+  const ok = v.nome.trim().length > 1 && n(v.porcao) > 0 && n(v.proteina) >= 0 && v.proteina !== ''
+  return (
+    <Modal aberto={aberto} onFechar={onFechar}>
+      <h3>Adicionar pelo rótulo</h3>
+      <p className="legenda">Copie da tabela nutricional da embalagem. Fica salvo para as próximas refeições.</p>
+      <label className="rotulo" htmlFor="rn">Nome do produto</label>
+      <input id="rn" className="campo" placeholder="Ex.: Whey protein baunilha" value={v.nome} onChange={(e) => setV({ ...v, nome: e.target.value })} />
+      <div className="duas-col">
+        <div>
+          <label className="rotulo" htmlFor="rp">Porção (g)</label>
+          <input id="rp" className="campo" inputMode="decimal" placeholder="30" value={v.porcao} onChange={(e) => setV({ ...v, porcao: e.target.value.replace(/[^\d,.]/g, '') })} />
+        </div>
+        <div>
+          <label className="rotulo" htmlFor="rpr">Proteína na porção (g)</label>
+          <input id="rpr" className="campo" inputMode="decimal" placeholder="24" value={v.proteina} onChange={(e) => setV({ ...v, proteina: e.target.value.replace(/[^\d,.]/g, '') })} />
+        </div>
+      </div>
+      <div className="duas-col">
+        <div>
+          <label className="rotulo" htmlFor="rk">Calorias (opcional)</label>
+          <input id="rk" className="campo" inputMode="decimal" placeholder="120" value={v.kcal} onChange={(e) => setV({ ...v, kcal: e.target.value.replace(/[^\d,.]/g, '') })} />
+        </div>
+        <div>
+          <label className="rotulo" htmlFor="rt">Medida (opcional)</label>
+          <input id="rt" className="campo" placeholder="1 scoop" value={v.texto} onChange={(e) => setV({ ...v, texto: e.target.value })} />
+        </div>
+      </div>
+      {ok && (
+        <div className="aviso" style={{ marginTop: 14 }}>
+          <span>{num((n(v.proteina) / n(v.porcao)) * 100)} g de proteína a cada 100 g.</span>
+        </div>
+      )}
+      <div className="duas-col" style={{ marginTop: 18 }}>
+        <button className="btn btn--contorno" onClick={onFechar}>Cancelar</button>
+        <button
+          className="btn btn--primario"
+          disabled={!ok}
+          onClick={() => {
+            onSalvar({ id: uid(), nome: v.nome.trim(), porcao_g: n(v.porcao), porcao_texto: v.texto.trim() ? `${v.texto.trim()} (${n(v.porcao)} g)` : undefined, proteina_g: n(v.proteina), energia_kcal: v.kcal ? n(v.kcal) : undefined })
+            setV({ nome: '', porcao: '', proteina: '', kcal: '', texto: '' })
+          }}
+        >
+          Salvar e incluir
+        </button>
+      </div>
+    </Modal>
   )
 }
 
@@ -485,51 +575,6 @@ export function SintomaTela() {
           }}
         >
           Salvar registro
-        </button>
-      </div>
-    </div>
-  )
-}
-
-/* ======================= Peso ======================= */
-export function Peso() {
-  const nav = useNavigate()
-  const { s, set } = useStore()
-  const toast = useToast()
-  const ult = ultimoPeso(s)
-  const [kg, setKg] = useState(ult?.kg ?? 80)
-  return (
-    <div className="tela">
-      <div className="topo">
-        <button className="btn-icone" onClick={() => nav(-1)} aria-label="Voltar">
-          <Icon name="back" />
-        </button>
-        <h1 className="titulo-tela" style={{ fontSize: 26 }}>Registrar peso</h1>
-      </div>
-      <div className="peso-seletor">
-        <button className="btn-icone" onClick={() => setKg((k) => +(k - 0.1).toFixed(1))} aria-label="Diminuir 100 g">−</button>
-        <motion.div key={kg} initial={{ y: -6, opacity: 0.4 }} animate={{ y: 0, opacity: 1 }} className="peso-seletor__num">
-          {num(kg)}
-          <span>kg</span>
-        </motion.div>
-        <button className="btn-icone" onClick={() => setKg((k) => +(k + 0.1).toFixed(1))} aria-label="Aumentar 100 g">+</button>
-      </div>
-      <input type="range" min={40} max={200} step={0.1} value={kg} onChange={(e) => setKg(Number(e.target.value))} className="range" aria-label="Peso" />
-      {ult && <p className="legenda" style={{ textAlign: 'center', marginTop: 8 }}>Último registro: {num(ult.kg)} kg</p>}
-      <div className="dica-dose" style={{ marginTop: 20 }}>
-        <Mascot expressao="piscando" size={40} flutuar={false} />
-        <p>Pese-se sempre no mesmo horário, de preferência pela manhã. O número do dia é só um ponto da curva.</p>
-      </div>
-      <div className="rodape-acao">
-        <button
-          className="btn btn--primario btn--bloco"
-          onClick={() => {
-            set((x) => ({ ...x, pesos: [...x.pesos, { id: uid(), kg, em: new Date().toISOString() }] }))
-            toast(`Peso registrado: ${num(kg)} kg`)
-            nav('/app/home')
-          }}
-        >
-          Salvar peso
         </button>
       </div>
     </div>

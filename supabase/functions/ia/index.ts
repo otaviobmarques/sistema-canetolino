@@ -8,7 +8,7 @@ import Anthropic from 'npm:@anthropic-ai/sdk@1.6.0'
 import { createClient } from 'npm:@supabase/supabase-js@2.119.0'
 
 const MODELO = 'claude-haiku-5-5' // rápido e barato; sem recuperação automática no servidor, o app cai para a busca manual
-const VERSAO_PROMPT = 'ia-v1'
+const VERSAO_PROMPT = 'ia-v2'
 const COTA_BASICO = 30 // refeições por IA por mês no plano Básico
 
 const CORS = {
@@ -19,25 +19,22 @@ const CORS = {
 const json = (corpo: unknown, status = 200) =>
   new Response(JSON.stringify(corpo), { status, headers: { ...CORS, 'Content-Type': 'application/json' } })
 
-type Food = { id: string; nome: string; preparo: string | null; fonte: string; versao_tabela: string; proteina_100g: number; energia_100g: number }
+type Food = { id: string; nome: string; fonte: string; versao_tabela: string; proteina_100g: number; energia_100g: number }
 
 /* ---------------- prompts (fixos, para o cache funcionar) ---------------- */
-const SISTEMA_REFEICAO = (foods: Food[]) => `Você identifica alimentos em refeições brasileiras para o app Canetolino, um diário de quem faz tratamento com canetas (tirzepatida, semaglutida, liraglutida).
+const SISTEMA_REFEICAO = `Você identifica alimentos em refeições brasileiras para o app Canetolino, um diário de quem faz tratamento com canetas (tirzepatida, semaglutida, liraglutida).
 
-Sua tarefa é só reconhecer o que está no prato ou na descrição: o nome do alimento, o preparo e uma porção estimada em gramas. Não calcule nutrientes, calorias ou proteína: o app busca esses valores numa tabela nutricional oficial.
+Sua tarefa é só reconhecer o que está no prato ou na descrição: o nome do alimento, o preparo e uma porção estimada em gramas. Não calcule nutrientes, calorias ou proteína: o app busca esses valores em tabelas nutricionais oficiais (TACO, TBCA, POF/IBGE).
 
 Para cada alimento:
-- food_id: o id do catálogo abaixo quando o alimento corresponder a um item dele; "" quando não houver item correspondente.
 - nome: nome em português do Brasil, como uma pessoa diria (ex.: "Peito de frango grelhado").
+- busca: de 1 a 3 palavras para procurar o alimento numa tabela nutricional brasileira, da mais importante para a menos importante, sem acento (ex.: "frango peito grelhado", "feijao carioca cozido", "arroz cozido", "ovo frito").
 - preparo: grelhado, cozido, frito, cru, assado etc.
 - porcao_g: estimativa em gramas da porção servida.
 - porcao_texto: a porção em medida caseira (ex.: "1 concha (86 g)", "3 colheres (75 g)").
 - confianca: de 0 a 1, o quanto você tem certeza do alimento e da porção.
 
-Se a imagem não mostrar comida ou o texto não descrever uma refeição, devolva a lista vazia. Não comente sobre dieta, medicamento, dose ou saúde.
-
-Catálogo (id: nome, preparo):
-${foods.map((f) => `- ${f.id}: ${f.nome}, ${f.preparo ?? ''}`).join('\n')}`
+Separe pratos compostos nos seus alimentos quando der para ver (arroz, feijão, carne). Se a imagem não mostrar comida ou o texto não descrever uma refeição, devolva a lista vazia. Não comente sobre dieta, medicamento, dose ou saúde.`
 
 const SISTEMA_RESUMO = `Você é o Dose, o mascote do app Canetolino: uma caneta simpática que acompanha pessoas em tratamento com canetas para emagrecimento.
 
@@ -55,7 +52,7 @@ Responda só com o texto do resumo, sem título nem aspas.`
 // Filtro final: se o texto escapar das regras, o app mostra o resumo padrão sem IA.
 const BLOQUEIO = /\b(doses?|mg|miligramas?|microgramas?|diagn[oó]stic\w*|causou|causad[oa]s?|por causa d|devido a|efeito colateral|aument(e|ar) a|diminu(a|ir) a|reduz(a|ir) a|suspend\w*|troc(ar|a) de (rem[eé]dio|medicamento)|procure (um )?m[eé]dico)\b/i
 
-const ESQUEMA_REFEICAO = (ids: string[]) => ({
+const ESQUEMA_REFEICAO = {
   type: 'object',
   additionalProperties: false,
   required: ['itens'],
@@ -65,10 +62,10 @@ const ESQUEMA_REFEICAO = (ids: string[]) => ({
       items: {
         type: 'object',
         additionalProperties: false,
-        required: ['food_id', 'nome', 'preparo', 'porcao_g', 'porcao_texto', 'confianca'],
+        required: ['nome', 'busca', 'preparo', 'porcao_g', 'porcao_texto', 'confianca'],
         properties: {
-          food_id: { type: 'string', enum: [...ids, ''] },
           nome: { type: 'string' },
+          busca: { type: 'string' },
           preparo: { type: 'string' },
           porcao_g: { type: 'number' },
           porcao_texto: { type: 'string' },
@@ -77,9 +74,21 @@ const ESQUEMA_REFEICAO = (ids: string[]) => ({
       },
     },
   },
-})
+}
 
-type ItemIA = { food_id: string; nome: string; preparo: string; porcao_g: number; porcao_texto: string; confianca: number }
+type ItemIA = { nome: string; busca: string; preparo: string; porcao_g: number; porcao_texto: string; confianca: number }
+
+/** Procura o alimento na base; se não achar com todos os termos, tira o último e tenta de novo. */
+// deno-lint-ignore no-explicit-any
+async function casarAlimento(admin: any, item: ItemIA): Promise<Food | null> {
+  const termos = `${item.busca}`.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().split(/\s+/).filter(Boolean).slice(0, 4)
+  for (let n = termos.length; n >= 1; n--) {
+    const { data } = await admin.rpc('buscar_alimentos', { p_q: termos.slice(0, n).join(' '), p_limite: 1 })
+    const f = (data as Food[] | null)?.[0]
+    if (f && f.proteina_100g != null) return f
+  }
+  return null
+}
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS })
@@ -122,9 +131,6 @@ Deno.serve(async (req) => {
         if ((count ?? 0) >= COTA_BASICO) return json({ erro: 'cota', limite: COTA_BASICO }, 429)
       }
 
-      const { data: foods } = await admin.from('foods').select('*').order('id')
-      const catalogo = (foods ?? []) as Food[]
-
       let conteudo: Anthropic.ContentBlockParam[]
       if (corpo.acao === 'refeicao_foto') {
         const tipo = corpo.media_type ?? 'image/jpeg'
@@ -143,8 +149,8 @@ Deno.serve(async (req) => {
       const r = await claude.messages.create({
         model: MODELO,
         max_tokens: 4000,
-        output_config: { effort: 'low', format: { type: 'json_schema', schema: ESQUEMA_REFEICAO(catalogo.map((f) => f.id)) } },
-        system: [{ type: 'text', text: SISTEMA_REFEICAO(catalogo), cache_control: { type: 'ephemeral' } }],
+        output_config: { effort: 'low', format: { type: 'json_schema', schema: ESQUEMA_REFEICAO } },
+        system: [{ type: 'text', text: SISTEMA_REFEICAO, cache_control: { type: 'ephemeral' } }],
         messages: [{ role: 'user', content: conteudo }],
       })
       await registrarUso(corpo.acao, r)
@@ -154,13 +160,13 @@ Deno.serve(async (req) => {
       const saida = JSON.parse(txt && txt.type === 'text' ? txt.text : '{"itens":[]}') as { itens: ItemIA[] }
 
       // nutrientes sempre da tabela; o que não casar volta marcado para busca manual
-      const itens = saida.itens.slice(0, 12).map((i) => {
-        const f = catalogo.find((x) => x.id === i.food_id)
+      const itens = await Promise.all(saida.itens.slice(0, 12).map(async (i) => {
+        const f = await casarAlimento(admin, i)
         const g = Math.max(5, Math.min(1500, Math.round(i.porcao_g)))
         return f
-          ? { food_id: f.id, nome: f.nome, porcao_g: g, porcao_texto: i.porcao_texto || `${g} g`, proteina_g: +((f.proteina_100g * g) / 100).toFixed(1), energia_kcal: Math.round((f.energia_100g * g) / 100), confianca: i.confianca, nao_encontrado: false, versao_tabela: f.versao_tabela }
-          : { food_id: '', nome: i.nome, porcao_g: g, porcao_texto: i.porcao_texto || `${g} g`, proteina_g: 0, energia_kcal: 0, confianca: i.confianca, nao_encontrado: true, versao_tabela: '' }
-      })
+          ? { food_id: f.id, nome: i.nome, nome_tabela: f.nome, fonte: f.fonte, porcao_g: g, porcao_texto: i.porcao_texto || `${g} g`, proteina_g: +((Number(f.proteina_100g) * g) / 100).toFixed(1), energia_kcal: Math.round((Number(f.energia_100g ?? 0) * g) / 100), confianca: i.confianca, nao_encontrado: false, versao_tabela: f.versao_tabela }
+          : { food_id: '', nome: i.nome, nome_tabela: '', fonte: '', porcao_g: g, porcao_texto: i.porcao_texto || `${g} g`, proteina_g: 0, energia_kcal: 0, confianca: i.confianca, nao_encontrado: true, versao_tabela: '' }
+      }))
       return json({ itens, modelo: r.model })
     }
 

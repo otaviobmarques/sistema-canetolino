@@ -21,7 +21,7 @@ import {
   useStore,
   type Local,
 } from '../data/store'
-import { PLANOS, precoBR, type Plano } from '../data/planos'
+import { PLANOS, precoBR } from '../data/planos'
 import { resumoSemanal } from '../lib/ia'
 import { erroPt, sb } from '../lib/supabase'
 import { dataBR, dataCurta, dataDiaMes, dataHoraBR, DIA_MS, diasEntre, DIAS_LONGOS, inicioDoDia, mesAno, num, saudacaoData, uid } from '../lib/datas'
@@ -136,7 +136,7 @@ export function Home() {
         <p>{dicaDoDose(s)}</p>
       </Cartao>
 
-      <Cartao i={4} className="card linha-peso" onClick={() => nav('/app/registrar/peso')} role="button" tabIndex={0}>
+      <Cartao i={4} className="card linha-peso" onClick={() => nav('/app/evolucao')} role="button" tabIndex={0}>
         <div>
           <b className="card-titulo">Peso</b>
           <div className="peso-num">{peso ? `${num(peso.kg)} kg` : '—'}</div>
@@ -403,7 +403,6 @@ export function Perfil() {
   const [excluir, setExcluir] = useState(false)
   const [confirmTxt, setConfirmTxt] = useState('')
   const [senha, setSenha] = useState('')
-  const [premium, setPremium] = useState(false)
   const [ajuda, setAjuda] = useState(false)
   const [verAuditoria, setVerAuditoria] = useState(false)
   const ativos = s.compartilhamentos.filter(compartilhamentoAtivo)
@@ -439,7 +438,7 @@ export function Perfil() {
           <p className="legenda">Plano {PLANOS[s.perfil.plano].nome} · {precoBR(PLANOS[s.perfil.plano].preco)}/mês</p>
         </div>
         {s.perfil.plano === 'basico' && (
-          <button className="link-violeta" onClick={() => setPremium(true)}>Ver Premium</button>
+          <button className="link-violeta" onClick={() => nav('/app/planos')}>Ver Premium</button>
         )}
       </Cartao>
 
@@ -492,6 +491,8 @@ export function Perfil() {
             </motion.div>
           )}
         </AnimatePresence>
+        <button onClick={() => nav('/app/evolucao?aba=fotos')}>Minha evolução <span className="legenda">peso, medidas e fotos</span></button>
+        <button onClick={() => nav('/app/planos')}>Planos e assinatura <span className="legenda">{PLANOS[s.perfil.plano].nome}</span></button>
         <button onClick={exportar}>Exportar meus dados</button>
         <button onClick={() => setAjuda(true)}>Ajuda e termos</button>
         <button onClick={async () => { await sair(); nav('/app/boas-vindas') }}>Sair</button>
@@ -561,28 +562,6 @@ export function Perfil() {
             Excluir
           </button>
         </div>
-      </Modal>
-
-      <Modal aberto={premium} onFechar={() => setPremium(false)} largura={520}>
-        <div style={{ display: 'flex', justifyContent: 'center' }}><Mascot expressao="comemorando" size={80} /></div>
-        <h3 style={{ textAlign: 'center' }}>Planos Canetolino</h3>
-        <div className="planos">
-          {(Object.keys(PLANOS) as Plano[]).map((k) => (
-            <div key={k} className={`plano ${k === 'premium' ? 'plano--destaque' : ''} ${s.perfil.plano === k ? 'is-atual' : ''}`}>
-              <b>{PLANOS[k].nome}</b>
-              <div className="plano__preco">{precoBR(PLANOS[k].preco)}<small>/mês</small></div>
-              <small className="legenda">ou {precoBR(PLANOS[k].anual)}/ano</small>
-              <ul className="lista-premium">
-                {PLANOS[k].itens.map((t) => <li key={t}><Icon name="check" size={16} /> {t}</li>)}
-              </ul>
-              {s.perfil.plano === k && <span className="selo selo--lilas">seu plano</span>}
-            </div>
-          ))}
-        </div>
-        <button className="btn btn--turquesa btn--bloco" disabled>
-          Assinatura pela App Store e Google Play em breve
-        </button>
-        <p className="legenda" style={{ textAlign: 'center', marginTop: 8 }}>A troca de plano é feita pela loja do seu celular, no app nativo.</p>
       </Modal>
 
       <Modal aberto={ajuda} onFechar={() => setAjuda(false)}>

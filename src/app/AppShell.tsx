@@ -6,7 +6,8 @@ import { Logo } from '../components/ui'
 import { useStore } from '../data/store'
 import { Boasvindas, Cadastro, Login, NovaSenha, Onboarding } from './Entrada'
 import { Home, Jornada, Perfil, Radar } from './Principal'
-import { Peso, Refeicao, Registrar, SintomaTela, Treino } from './Registros'
+import { Refeicao, Registrar, SintomaTela, Treino } from './Registros'
+import { Corpo, Planos } from './Evolucao'
 import Compartilhar from './Compartilhar'
 import '../styles/app.css'
 
@@ -84,7 +85,9 @@ export default function AppShell() {
                 <Route path="registrar" element={<Protegida><Registrar /></Protegida>} />
                 <Route path="registrar/refeicao" element={<Protegida><Refeicao /></Protegida>} />
                 <Route path="registrar/sintoma" element={<Protegida><SintomaTela /></Protegida>} />
-                <Route path="registrar/peso" element={<Protegida><Peso /></Protegida>} />
+                <Route path="registrar/peso" element={<Protegida><Corpo /></Protegida>} />
+                <Route path="evolucao" element={<Protegida><Corpo /></Protegida>} />
+                <Route path="planos" element={<Protegida><Planos /></Protegida>} />
                 <Route path="registrar/treino" element={<Protegida><Treino /></Protegida>} />
                 <Route path="*" element={<Navigate to={destinoInicial} replace />} />
               </Routes>

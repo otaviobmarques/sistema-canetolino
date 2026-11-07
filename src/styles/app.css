@@ -259,3 +259,43 @@
 @media (max-width: 420px) { .planos { grid-template-columns: 1fr; } }
 
 .resumo-dose__escrevendo { animation: m-pulse 1.4s ease-in-out infinite; color: #d8cbf7 !important; }
+.item-ref__editar { flex-wrap: wrap; }
+.item-ref__medida { min-height: 38px; font-size: 12.5px; padding: 0 12px; }
+
+/* abas (evolução) */
+.abas { display: grid; grid-template-columns: repeat(3, 1fr); background: var(--lilas); border-radius: 14px; padding: 4px; margin-bottom: 14px; }
+.abas button { position: relative; border: 0; background: none; padding: 10px 0; border-radius: 11px; font-weight: 700; color: var(--texto-2); cursor: pointer; }
+.abas button span { position: relative; z-index: 1; }
+.abas button.is-on { color: var(--roxo); }
+.abas__ind { position: absolute; inset: 0; background: #fff; border-radius: 11px; box-shadow: var(--sombra); }
+.texto-sucesso { color: var(--sucesso); font-weight: 600; }
+.lista-medidas { display: grid; gap: 8px; margin-top: 12px; }
+.linha-medida { display: flex; align-items: center; justify-content: space-between; gap: 10px; background: #fff; border: 1px solid var(--borda); border-radius: 16px; padding: 10px 12px 10px 14px; }
+.linha-medida b { display: block; color: var(--roxo); font-size: 15px; }
+.linha-medida .legenda { font-size: 12.5px; }
+.linha-medida__campo { display: flex; align-items: center; gap: 6px; flex: none; }
+.linha-medida__campo .campo { width: 84px; min-height: 44px; text-align: right; padding: 0 10px; }
+.linha-medida__campo span { color: var(--texto-2); font-size: 13px; }
+.grade-fotos { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.foto-evol { position: relative; border: 0; padding: 0; border-radius: 14px; overflow: hidden; aspect-ratio: 3/4; cursor: pointer; background: var(--lilas); }
+.foto-evol img { width: 100%; height: 100%; object-fit: cover; }
+.foto-evol span { position: absolute; left: 6px; bottom: 6px; background: rgba(29,14,61,.7); color: #fff; font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 8px; }
+.comparador { position: relative; border-radius: 16px; overflow: hidden; margin-top: 12px; aspect-ratio: 3/4; background: #000; }
+.comparador img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.comparador__depois { position: absolute; inset: 0; }
+.comparador__linha { position: absolute; top: 0; bottom: 0; width: 3px; background: #fff; box-shadow: 0 0 0 1px rgba(0,0,0,.2); transform: translateX(-50%); }
+label.btn.is-ocupado { opacity: .6; pointer-events: none; }
+/* planos */
+.uso-ia { margin-bottom: 14px; }
+.alternador { display: grid; grid-template-columns: 1fr 1.4fr; background: var(--lilas); border-radius: 14px; padding: 4px; }
+.alternador button { border: 0; background: none; padding: 10px 6px; border-radius: 11px; font-weight: 700; color: var(--texto-2); cursor: pointer; display: flex; gap: 6px; align-items: center; justify-content: center; font-size: 14px; }
+.alternador button.is-on { background: #fff; color: var(--roxo); box-shadow: var(--sombra); }
+.planos-tela { display: grid; gap: 12px; margin-top: 14px; }
+.plano-card { position: relative; background: #fff; border: 1.5px solid var(--borda); border-radius: 20px; padding: 18px; overflow: hidden; }
+.plano-card--destaque { border-color: var(--violeta-claro); background: linear-gradient(170deg, #f6f1ff, #fff 60%); }
+.plano-card__fita { position: absolute; top: 14px; right: -34px; transform: rotate(35deg); background: var(--turquesa); color: var(--texto); font-weight: 800; font-size: 11px; padding: 4px 40px; }
+.plano-card__topo { display: flex; gap: 8px; align-items: center; }
+.plano-card__topo b { font-family: var(--f-titulo); font-size: 19px; color: var(--roxo); }
+.plano-card .lista-premium { margin: 12px 0 14px; gap: 7px; font-size: 14px; }
+.plano-card .lista-premium li { align-items: flex-start; font-weight: 500; }
+.plano-card .lista-premium svg { flex: none; margin-top: 3px; }

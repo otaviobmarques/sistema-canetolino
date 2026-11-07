@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { DIA_MS, diasEntre, ehHoje, inicioDoDia, mesmoDia } from '../lib/datas'
 import { erroPt, sb, urlRetorno } from '../lib/supabase'
 import { carregar, mapearShares, sincronizar } from './nuvem'
-import { foodById } from './foods'
+import { apagarTodasAsFotos } from '../lib/fotos'
 
 /* ============================ Tipos (espelham o modelo de dados do descritivo) ============================ */
 export type Origem = 'manual' | 'ia_estimativa' | 'integracao'
@@ -29,7 +29,19 @@ export const SINTOMAS = ['Enjoo', 'Constipação', 'Diarreia', 'Azia', 'Cansaço
 /** Regra fixa, sem IA (seção 4.7). Lista a ser revisada por médico antes do lançamento. */
 export const SINTOMAS_ALERTA = ['Dor abdominal forte', 'Vômitos que não passam']
 
-export type ItemRefeicao = { foodId: string; nome: string; porcao_g: number; porcao_texto: string; proteina_g: number; energia_kcal: number; origem: Origem }
+export type ItemRefeicao = { foodId: string; nome: string; porcao_g: number; porcao_texto: string; proteina_g: number; energia_kcal: number; origem: Origem; fonte?: string; medidas?: { nome: string; gramas: number }[] }
+export const TIPOS_MEDIDA = [
+  { id: 'cintura', nome: 'Cintura' },
+  { id: 'abdomen', nome: 'Abdômen' },
+  { id: 'quadril', nome: 'Quadril' },
+  { id: 'peito', nome: 'Peito' },
+  { id: 'braco', nome: 'Braço' },
+  { id: 'coxa', nome: 'Coxa' },
+  { id: 'pescoco', nome: 'Pescoço' },
+] as const
+export type TipoMedida = (typeof TIPOS_MEDIDA)[number]['id']
+export type Medida = { id: string; tipo: TipoMedida; cm: number; em: string }
+export type AlimentoRotulo = { id: string; nome: string; porcao_g: number; porcao_texto?: string; proteina_g: number; energia_kcal?: number }
 export type Refeicao = { id: string; tipo: string; em: string; itens: ItemRefeicao[]; origem: Origem; versao_tabela: string; foto?: string }
 export type Aplicacao = { id: string; em: string; local: Local; obs?: string }
 export type Agua = { id: string; ml: number; em: string }
@@ -76,6 +88,8 @@ export type Estado = {
   agua: Agua[]
   refeicoes: Refeicao[]
   pesos: Peso[]
+  medidas: Medida[]
+  alimentosRotulo: AlimentoRotulo[]
   sintomas: Sintoma[]
   treinos: Treino[]
   canetas: Caneta[]
@@ -97,6 +111,8 @@ export const vazio = (): Estado => ({
   agua: [],
   refeicoes: [],
   pesos: [],
+  medidas: [],
+  alimentosRotulo: [],
   sintomas: [],
   treinos: [],
   canetas: [],
@@ -106,20 +122,6 @@ export const vazio = (): Estado => ({
   auditoria: [],
   config: { notificacoesDiscretas: true, ia: true, fotosLocal: true, lembreteHora: '08:00', lembretesAgua: true },
 })
-
-const item = (foodId: string, g?: number, origem: Origem = 'manual'): ItemRefeicao => {
-  const f = foodById(foodId)
-  const porcao = g ?? f.porcaoPadrao.g
-  return {
-    foodId,
-    nome: f.nome,
-    porcao_g: porcao,
-    porcao_texto: g && g !== f.porcaoPadrao.g ? `${g} g` : f.porcaoPadrao.texto,
-    proteina_g: +((f.proteina_100g * porcao) / 100).toFixed(1),
-    energia_kcal: Math.round((f.energia_100g * porcao) / 100),
-    origem,
-  }
-}
 
 /* ============================ Regras de negócio ============================ */
 export function proximaAplicacao(s: Estado): Date | null {
@@ -480,6 +482,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   )
 
   const excluirConta = useCallback(async () => {
+    if (atual.current.userId) await apagarTodasAsFotos(atual.current.userId)
     const { error } = await c.rpc('excluir_minha_conta')
     if (error) throw error
     await c.auth.signOut({ scope: 'local' })
@@ -499,4 +502,4 @@ export function useStore() {
   return c
 }
 
-export { ehHoje, item as criarItem }
+export { ehHoje }

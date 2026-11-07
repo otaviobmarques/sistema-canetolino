@@ -1,0 +1,365 @@
+import { AnimatePresence, motion } from 'framer-motion'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
+import GraficoPeso from '../components/GraficoPeso'
+import Icon from '../components/Icon'
+import Mascot from '../components/Mascot'
+import { Modal, useToast } from '../components/ui'
+import { PLANOS, precoBR, type Plano } from '../data/planos'
+import { TIPOS_MEDIDA, ultimoPeso, useStore, type TipoMedida } from '../data/store'
+import { dataBR, dataCurta, num, uid } from '../lib/datas'
+import { apagarFoto, listarFotos, salvarFoto, type Angulo, type FotoEvolucao } from '../lib/fotos'
+import { erroPt, sb } from '../lib/supabase'
+
+type Aba = 'peso' | 'medidas' | 'fotos'
+
+/* ======================= Peso, medidas e fotos de evolução ======================= */
+export function Corpo() {
+  const nav = useNavigate()
+  const [params, setParams] = useSearchParams()
+  const aba = (params.get('aba') as Aba) || 'peso'
+  const abas: { id: Aba; nome: string }[] = [
+    { id: 'peso', nome: 'Peso' },
+    { id: 'medidas', nome: 'Medidas' },
+    { id: 'fotos', nome: 'Fotos' },
+  ]
+  return (
+    <div className="tela">
+      <div className="topo">
+        <button className="btn-icone" onClick={() => nav(-1)} aria-label="Voltar">
+          <Icon name="back" />
+        </button>
+        <h1 className="titulo-tela" style={{ fontSize: 26 }}>Minha evolução</h1>
+      </div>
+      <div className="abas" role="tablist">
+        {abas.map((a) => (
+          <button key={a.id} role="tab" aria-selected={aba === a.id} className={aba === a.id ? 'is-on' : ''} onClick={() => setParams({ aba: a.id }, { replace: true })}>
+            {aba === a.id && <motion.span layoutId="aba-ind" className="abas__ind" transition={{ type: 'spring', stiffness: 500, damping: 35 }} />}
+            <span>{a.nome}</span>
+          </button>
+        ))}
+      </div>
+      <AnimatePresence mode="wait">
+        <motion.div key={aba} initial={{ opacity: 0, x: 16 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -16 }} transition={{ duration: 0.25 }} style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
+          {aba === 'peso' && <AbaPeso />}
+          {aba === 'medidas' && <AbaMedidas />}
+          {aba === 'fotos' && <AbaFotos />}
+        </motion.div>
+      </AnimatePresence>
+    </div>
+  )
+}
+
+function AbaPeso() {
+  const nav = useNavigate()
+  const { s, set } = useStore()
+  const toast = useToast()
+  const ult = ultimoPeso(s)
+  const [kg, setKg] = useState(ult?.kg ?? (s.perfil.peso_inicial_kg || 80))
+  const pesos = [...s.pesos].sort((a, b) => +new Date(a.em) - +new Date(b.em))
+  return (
+    <>
+      <div className="peso-seletor">
+        <button className="btn-icone" onClick={() => setKg((k) => +(k - 0.1).toFixed(1))} aria-label="Diminuir 100 g">−</button>
+        <motion.div key={kg} initial={{ y: -6, opacity: 0.4 }} animate={{ y: 0, opacity: 1 }} className="peso-seletor__num">
+          {num(kg)}
+          <span>kg</span>
+        </motion.div>
+        <button className="btn-icone" onClick={() => setKg((k) => +(k + 0.1).toFixed(1))} aria-label="Aumentar 100 g">+</button>
+      </div>
+      <input type="range" min={40} max={200} step={0.1} value={kg} onChange={(e) => setKg(Number(e.target.value))} className="range" aria-label="Peso" />
+      {pesos.length > 1 && (
+        <div className="card" style={{ marginTop: 16 }}>
+          <b className="card-titulo">Histórico</b>
+          <GraficoPeso pontos={pesos.slice(-8).map((p) => p.kg)} altura={120} />
+        </div>
+      )}
+      <div className="dica-dose" style={{ marginTop: 16 }}>
+        <Mascot expressao="piscando" size={40} flutuar={false} />
+        <p>Pese-se sempre no mesmo horário, de preferência pela manhã. O número do dia é só um ponto da curva.</p>
+      </div>
+      <div className="rodape-acao">
+        <button
+          className="btn btn--primario btn--bloco"
+          onClick={() => {
+            set((x) => ({ ...x, pesos: [...x.pesos, { id: uid(), kg, em: new Date().toISOString() }] }))
+            toast(`Peso registrado: ${num(kg)} kg`)
+            nav('/app/home')
+          }}
+        >
+          Salvar peso
+        </button>
+      </div>
+    </>
+  )
+}
+
+function AbaMedidas() {
+  const { s, set } = useStore()
+  const toast = useToast()
+  const [valores, setValores] = useState<Partial<Record<TipoMedida, string>>>({})
+  const ultima = (t: TipoMedida) => [...s.medidas].filter((m) => m.tipo === t).sort((a, b) => +new Date(b.em) - +new Date(a.em))[0]
+  const primeira = (t: TipoMedida) => [...s.medidas].filter((m) => m.tipo === t).sort((a, b) => +new Date(a.em) - +new Date(b.em))[0]
+  const preenchidas = Object.entries(valores).filter(([, v]) => v && Number(v.replace(',', '.')) >= 10)
+  return (
+    <>
+      <p className="legenda" style={{ marginTop: 4 }}>Meça com fita métrica, sem apertar, sempre no mesmo ponto. Preencha só o que quiser.</p>
+      <div className="lista-medidas">
+        {TIPOS_MEDIDA.map((t) => {
+          const u = ultima(t.id)
+          const p = primeira(t.id)
+          const dif = u && p && u.id !== p.id ? u.cm - p.cm : null
+          return (
+            <label key={t.id} className="linha-medida">
+              <div>
+                <b>{t.nome}</b>
+                <span className="legenda">
+                  {u ? `${num(u.cm)} cm em ${dataBR(u.em)}` : 'sem registro'}
+                  {dif !== null && Math.abs(dif) >= 0.1 && <span className={dif < 0 ? 'texto-sucesso' : ''}> · {dif < 0 ? '−' : '+'}{num(Math.abs(dif))} cm desde o início</span>}
+                </span>
+              </div>
+              <div className="linha-medida__campo">
+                <input className="campo" inputMode="decimal" placeholder={u ? num(u.cm) : 'cm'} value={valores[t.id] ?? ''} onChange={(e) => setValores((v) => ({ ...v, [t.id]: e.target.value.replace(/[^\d,.]/g, '') }))} aria-label={`${t.nome} em centímetros`} />
+                <span>cm</span>
+              </div>
+            </label>
+          )
+        })}
+      </div>
+      <div className="rodape-acao">
+        <button
+          className="btn btn--primario btn--bloco"
+          disabled={!preenchidas.length}
+          onClick={() => {
+            const em = new Date().toISOString()
+            set((x) => ({ ...x, medidas: [...x.medidas, ...preenchidas.map(([tipo, v]) => ({ id: uid(), tipo: tipo as TipoMedida, cm: Number(v!.replace(',', '.')), em }))] }))
+            toast(`${preenchidas.length} ${preenchidas.length === 1 ? 'medida registrada' : 'medidas registradas'}`)
+            setValores({})
+          }}
+        >
+          Salvar medidas
+        </button>
+      </div>
+    </>
+  )
+}
+
+function AbaFotos() {
+  const { s } = useStore()
+  const toast = useToast()
+  const [fotos, setFotos] = useState<FotoEvolucao[] | null>(null)
+  const [angulo, setAngulo] = useState<Angulo>('frente')
+  const [enviando, setEnviando] = useState(false)
+  const [comparar, setComparar] = useState(false)
+  const [ver, setVer] = useState<FotoEvolucao | null>(null)
+  const [corte, setCorte] = useState(50)
+  const local = s.config.fotosLocal
+
+  const carregar = useCallback(() => {
+    if (!s.userId) return
+    listarFotos(s.userId).then(setFotos).catch(() => setFotos([]))
+  }, [s.userId])
+  useEffect(() => {
+    carregar()
+  }, [carregar])
+
+  const doAngulo = useMemo(() => (fotos ?? []).filter((f) => f.angulo === angulo), [fotos, angulo])
+  const antes = doAngulo[0]
+  const depois = doAngulo[doAngulo.length - 1]
+
+  return (
+    <>
+      <div className="aviso" style={{ marginTop: 4 }}>
+        <Icon name="lock" size={18} />
+        <span>{local ? 'Suas fotos ficam só neste aparelho e não vão para a nuvem.' : 'Suas fotos ficam guardadas na nuvem, em área privada só sua.'} Elas nunca são compartilhadas com profissionais. Mude em Perfil → Privacidade.</span>
+      </div>
+      <div className="chips" style={{ marginTop: 14, flexWrap: 'nowrap' }}>
+        {(['frente', 'lado', 'costas'] as Angulo[]).map((a) => (
+          <button key={a} className={`chip chip--quadrado ${angulo === a ? 'is-on' : ''}`} onClick={() => setAngulo(a)}>
+            {a[0].toUpperCase() + a.slice(1)}
+          </button>
+        ))}
+      </div>
+
+      {fotos === null ? (
+        <div className="grade-fotos" style={{ marginTop: 12 }}>{[0, 1, 2].map((i) => <div key={i} className="skeleton" style={{ aspectRatio: '3/4' }} />)}</div>
+      ) : doAngulo.length === 0 ? (
+        <div className="vazio" style={{ marginTop: 10 }}>
+          <Mascot expressao="piscando" size={70} />
+          <p>Nenhuma foto de {angulo} ainda. Tire a primeira hoje: daqui a algumas semanas você vai gostar de comparar.</p>
+        </div>
+      ) : (
+        <div className="grade-fotos" style={{ marginTop: 12 }}>
+          {doAngulo.map((f) => (
+            <button key={f.id} className="foto-evol" onClick={() => setVer(f)}>
+              <img src={f.url} alt={`Foto de ${f.angulo} em ${dataBR(f.em)}`} />
+              <span>{dataCurta(f.em)}</span>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {doAngulo.length >= 2 && (
+        <button className="btn btn--lilas btn--bloco" style={{ marginTop: 12 }} onClick={() => setComparar(true)}>
+          Comparar primeira e última
+        </button>
+      )}
+
+      <div className="rodape-acao">
+        <label className={`btn btn--primario btn--bloco ${enviando ? 'is-ocupado' : ''}`} style={{ cursor: 'pointer' }}>
+          <input
+            type="file"
+            accept="image/*"
+            capture="user"
+            className="sr-only"
+            disabled={enviando}
+            onChange={async (e) => {
+              const f = e.target.files?.[0]
+              e.target.value = ''
+              if (!f || !s.userId) return
+              setEnviando(true)
+              try {
+                await salvarFoto(s.userId, f, angulo, local)
+                toast('Foto salva')
+                carregar()
+              } catch (er) {
+                toast(erroPt(er), 'info')
+              } finally {
+                setEnviando(false)
+              }
+            }}
+          />
+          <Icon name="camera" size={20} /> {enviando ? 'Salvando…' : `Adicionar foto de ${angulo}`}
+        </label>
+      </div>
+
+      <Modal aberto={comparar} onFechar={() => setComparar(false)} largura={520}>
+        {antes && depois && (
+          <>
+            <h3>Antes e depois</h3>
+            <p className="legenda">{dataBR(antes.em)} → {dataBR(depois.em)} · arraste para comparar</p>
+            <div className="comparador">
+              <img src={antes.url} alt="Primeira foto" />
+              <div className="comparador__depois" style={{ clipPath: `inset(0 0 0 ${corte}%)` }}>
+                <img src={depois.url} alt="Última foto" />
+              </div>
+              <div className="comparador__linha" style={{ left: `${corte}%` }} />
+            </div>
+            <input type="range" min={0} max={100} value={corte} onChange={(e) => setCorte(Number(e.target.value))} className="range" aria-label="Comparar" />
+          </>
+        )}
+      </Modal>
+      <Modal aberto={!!ver} onFechar={() => setVer(null)}>
+        {ver && (
+          <>
+            <img src={ver.url} alt="Foto de evolução" style={{ width: '100%', borderRadius: 16 }} />
+            <p className="legenda" style={{ marginTop: 8 }}>{dataBR(ver.em)} · {ver.angulo} · {ver.onde === 'aparelho' ? 'guardada neste aparelho' : 'guardada na nuvem'}</p>
+            <div className="duas-col" style={{ marginTop: 14 }}>
+              <button className="btn btn--contorno" onClick={() => setVer(null)}>Fechar</button>
+              <button
+                className="btn btn--perigo"
+                onClick={async () => {
+                  await apagarFoto(ver)
+                  setVer(null)
+                  toast('Foto apagada', 'info')
+                  carregar()
+                }}
+              >
+                Apagar
+              </button>
+            </div>
+          </>
+        )}
+      </Modal>
+    </>
+  )
+}
+
+/* ======================= Planos e assinatura ======================= */
+export function Planos() {
+  const nav = useNavigate()
+  const { s } = useStore()
+  const [anual, setAnual] = useState(false)
+  const [usoIA, setUsoIA] = useState<number | null>(null)
+  const [aviso, setAviso] = useState(false)
+  const atual = s.perfil.plano
+
+  useEffect(() => {
+    const inicio = new Date()
+    inicio.setDate(1)
+    inicio.setHours(0, 0, 0, 0)
+    sb('app')
+      .from('ai_usage')
+      .select('id', { count: 'exact', head: true })
+      .in('tipo', ['refeicao_foto', 'refeicao_texto'])
+      .gte('em', inicio.toISOString())
+      .then(({ count }) => setUsoIA(count ?? 0))
+  }, [])
+
+  return (
+    <div className="tela">
+      <div className="topo">
+        <button className="btn-icone" onClick={() => nav(-1)} aria-label="Voltar">
+          <Icon name="back" />
+        </button>
+        <h1 className="titulo-tela" style={{ fontSize: 26 }}>Planos</h1>
+      </div>
+
+      {atual === 'basico' && usoIA !== null && (
+        <div className="card uso-ia">
+          <div className="jornada-topo">
+            <b>Registros por IA neste mês</b>
+            <b>{usoIA} de 30</b>
+          </div>
+          <div className="barra-prog"><motion.i initial={{ width: 0 }} animate={{ width: `${Math.min(100, (usoIA / 30) * 100)}%` }} /></div>
+          <p className="legenda">Depois dos 30, você continua registrando pela busca de alimentos.</p>
+        </div>
+      )}
+
+      <div className="alternador" role="radiogroup" aria-label="Período">
+        <button role="radio" aria-checked={!anual} className={!anual ? 'is-on' : ''} onClick={() => setAnual(false)}>Mensal</button>
+        <button role="radio" aria-checked={anual} className={anual ? 'is-on' : ''} onClick={() => setAnual(true)}>
+          Anual <span className="selo selo--sucesso" style={{ padding: '1px 7px' }}>2 meses grátis</span>
+        </button>
+      </div>
+
+      <div className="planos-tela">
+        {(Object.keys(PLANOS) as Plano[]).map((k, i) => {
+          const p = PLANOS[k]
+          return (
+            <motion.div key={k} className={`plano-card ${k === 'premium' ? 'plano-card--destaque' : ''}`} initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.08 }}>
+              {k === 'premium' && <span className="plano-card__fita">Mais completo</span>}
+              <div className="plano-card__topo">
+                <b>{p.nome}</b>
+                {atual === k && <span className="selo selo--lilas">seu plano</span>}
+              </div>
+              <div className="plano__preco">
+                {precoBR(anual ? p.anual : p.preco)}
+                <small>/{anual ? 'ano' : 'mês'}</small>
+              </div>
+              {anual && <small className="legenda">equivale a {precoBR(p.anual / 12)}/mês</small>}
+              <ul className="lista-premium">
+                {p.itens.map((t) => (
+                  <li key={t}><Icon name="check" size={16} /> {t}</li>
+                ))}
+              </ul>
+              {atual !== k && (
+                <button className={`btn btn--bloco ${k === 'premium' ? 'btn--turquesa' : 'btn--contorno'}`} onClick={() => setAviso(true)}>
+                  {k === 'premium' ? 'Assinar Premium' : 'Mudar para o Básico'}
+                </button>
+              )}
+            </motion.div>
+          )
+        })}
+      </div>
+      <p className="legenda" style={{ textAlign: 'center', marginTop: 12 }}>Cobrança pela App Store ou Google Play. Cancele quando quiser.</p>
+
+      <Modal aberto={aviso} onFechar={() => setAviso(false)}>
+        <div style={{ display: 'flex', justifyContent: 'center' }}><Mascot expressao="piscando" size={80} /></div>
+        <h3 style={{ textAlign: 'center' }}>A assinatura chega com o app nas lojas</h3>
+        <p className="legenda" style={{ textAlign: 'center', fontSize: 14.5 }}>A troca de plano será feita pela App Store ou pelo Google Play, direto no seu celular. Avisamos você assim que estiver disponível.</p>
+        <button className="btn btn--primario btn--bloco" style={{ marginTop: 16 }} onClick={() => setAviso(false)}>Entendi</button>
+      </Modal>
+    </div>
+  )
+}

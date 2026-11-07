@@ -5,6 +5,8 @@ import { sb } from './supabase'
 export type ItemIA = {
   food_id: string
   nome: string
+  nome_tabela: string
+  fonte: string
   porcao_g: number
   porcao_texto: string
   proteina_g: number

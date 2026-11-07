@@ -18,7 +18,9 @@ npm install
 npm run dev
 ```
 
-Build de produção: `npm run build` (sai em `dist/`). A cada push na `main`, o workflow `.github/workflows/pages.yml` publica no GitHub Pages.
+Build de produção: `npm run build` (sai em `dist/`).
+
+**No ar:** https://sistema-canetolino.vercel.app (Vercel, ligada a este repositório: cada push na `main` publica sozinho).
 
 ## Como testar o fluxo completo
 

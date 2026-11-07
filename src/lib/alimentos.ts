@@ -1,11 +1,11 @@
 import type { AlimentoRotulo, ItemRefeicao } from '../data/store'
 import { sb } from './supabase'
 
-/** Alimento da base unificada (TACO, TBCA, POF/IBGE, USDA, CoFID), valores por 100 g. */
+/** Alimento da base unificada (TACO, TBCA, POF/IBGE, USDA, CoFID, Ciqual, CNF, AFCD, Frida, Fineli), valores por 100 g. */
 export type Alimento = {
   id: string
   nome: string
-  fonte: 'TACO' | 'TBCA' | 'POF' | 'USDA' | 'COFID' | 'rótulo'
+  fonte: 'TACO' | 'TBCA' | 'POF' | 'USDA' | 'COFID' | 'CIQUAL' | 'CNF' | 'AFCD' | 'FRIDA' | 'FINELI' | 'rótulo'
   categoria: string | null
   proteina_100g: number
   energia_100g: number | null
@@ -22,6 +22,11 @@ export const CITACAO: Record<string, string> = {
   POF: 'IBGE, POF 2008-2009',
   USDA: 'USDA FoodData Central',
   COFID: 'CoFID 2021 (Open Government Licence v3.0)',
+  CIQUAL: 'Ciqual 2025, ANSES (Licence Ouverte 2.0)',
+  CNF: 'Canadian Nutrient File 2026, Health Canada',
+  AFCD: '© FSANZ, AFCD Release 3 (CC BY 4.0)',
+  FRIDA: '© Frida 5.5, DTU Food (CC BY 4.0)',
+  FINELI: 'Fineli, THL (CC BY 4.0)',
   rótulo: 'rótulo do produto',
 }
 

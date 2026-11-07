@@ -243,8 +243,8 @@ Deno.serve(async (req) => {
     p.drawLine({ start: { x: 48, y: 58 }, end: { x: 547, y: 58 }, thickness: 0.5, color: VIOLETA })
     const rod = [
       'Dados registrados pelo paciente no Canetolino. Não é avaliação médica e não contém recomendação de dose.',
-      'Nutrientes: TACO (NEPA/UNICAMP), TBCA (USP/FoRC), IBGE POF 2008-2009, USDA FoodData Central e',
-      'CoFID 2021 (Open Government Licence v3.0), conforme o alimento.',
+      'Nutrientes, conforme o alimento: TACO (NEPA/UNICAMP), TBCA (USP/FoRC), IBGE POF 2008-2009, USDA FoodData Central, CoFID 2021 (OGL v3.0),',
+      'Ciqual 2025 (ANSES, Licence Ouverte 2.0), CNF 2026 (Health Canada), © FSANZ AFCD R3, © Frida 5.5 DTU e Fineli THL (CC BY 4.0).',
     ].map(limpar)
     rod.forEach((t, j) => p.drawText(t, { x: 48, y: 47 - j * 9, size: 6.8, font: d.f, color: CINZA }))
     p.drawText(`${i + 1}/${d.paginas.length}`, { x: 530, y: 47, size: 7, font: d.f, color: CINZA })

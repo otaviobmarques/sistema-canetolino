@@ -113,7 +113,7 @@ function Visao({ c }: { c: SupabaseClient }) {
         <div className="p-grade-2" style={{ marginTop: 18 }}>
           <div className="p-card">
             <h3>Base de alimentos</h3>
-            <p className="p-cinza" style={{ marginTop: 6 }}>{r.alimentos.toLocaleString('pt-BR')} alimentos (TACO, TBCA, POF, USDA e CoFID).</p>
+            <p className="p-cinza" style={{ marginTop: 6 }}>{r.alimentos.toLocaleString('pt-BR')} alimentos (TACO, TBCA, POF, USDA, CoFID, Ciqual, CNF, AFCD, Frida e Fineli).</p>
           </div>
           <div className="p-card">
             <h3>Lembretes</h3>

@@ -39,7 +39,7 @@ Domínio `canetolino.com.br` criado no Resend (região sa-east-1), com chave só
 
 ## Alimentos
 
-Base unificada do repositório `otaviobmarques/fontes-ref`: **18.245 alimentos** (TACO 592, TBCA 5.849, POF 1.936, USDA 7.024, CoFID 2.844), por 100 g, com medidas caseiras quando a fonte traz. Ficam de fora os registros marcados como incompletos ou inconsistentes na própria fonte.
+Base unificada do repositório `otaviobmarques/fontes-ref`: **30.664 alimentos** (TACO 592, TBCA 5.849, POF 1.936, USDA 7.024, CoFID 2.844, Ciqual 3.116, CNF 2.288, AFCD 1.500, Frida 1.375, Fineli 4.140), por 100 g, com medidas caseiras quando a fonte traz. Ficam de fora os registros marcados como incompletos ou inconsistentes na própria fonte.
 
 - Busca sem acento (`buscar_alimentos`), com itens do dia a dia e fontes brasileiras primeiro.
 - A fonte de cada valor aparece na tela (condição de uso da TACO e das demais).

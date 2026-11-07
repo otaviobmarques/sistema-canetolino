@@ -210,7 +210,7 @@ export default function Ficha({ c }: { c: SupabaseClient }) {
           </Secao>
         )}
       </div>
-      <p className="legenda" style={{ marginTop: 16 }}>Dados registrados pelo paciente. Refeições marcadas com IA foram estimadas e conferidas por ele; os nutrientes vêm das tabelas TACO, TBCA, POF/IBGE, USDA ou CoFID. Este acesso fica no histórico do paciente.</p>
+      <p className="legenda" style={{ marginTop: 16 }}>Dados registrados pelo paciente. Refeições marcadas com IA foram estimadas e conferidas por ele; os nutrientes vêm das tabelas TACO, TBCA, POF/IBGE, USDA, CoFID, Ciqual, CNF, AFCD, Frida ou Fineli. Este acesso fica no histórico do paciente.</p>
     </>
   )
 }

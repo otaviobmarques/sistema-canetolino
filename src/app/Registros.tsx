@@ -204,7 +204,7 @@ export function Refeicao() {
   const [resultados, setResultados] = useState<Alimento[]>([])
   const [buscando, setBuscando] = useState(false)
   const [rotuloAberto, setRotuloAberto] = useState(false)
-  // busca na base unificada (TACO, TBCA, POF, USDA, CoFID), com pausa curta enquanto digita
+  // busca na base unificada (TACO, TBCA, POF, USDA, CoFID e outras 5 tabelas), com pausa curta enquanto digita
   useEffect(() => {
     const q = busca.trim()
     if (q.length < 2) return setResultados([])

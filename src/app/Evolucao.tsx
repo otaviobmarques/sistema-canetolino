@@ -6,7 +6,7 @@ import Icon from '../components/Icon'
 import Mascot from '../components/Mascot'
 import { Modal, useToast } from '../components/ui'
 import { PLANOS, precoBR, type Plano } from '../data/planos'
-import { TIPOS_MEDIDA, ultimoPeso, useStore, type TipoMedida } from '../data/store'
+import { calcularImc, TIPOS_MEDIDA, ultimoPeso, useStore, type TipoMedida } from '../data/store'
 import { dataBR, dataCurta, num, uid } from '../lib/datas'
 import { apagarFoto, atualizarFoto, enviarFotosDoAparelho, listarFotos, salvarFoto, type Angulo, type FotoEvolucao } from '../lib/fotos'
 import { hoje, juntar, paraData, paraHora } from './Doses'
@@ -74,6 +74,18 @@ function AbaPeso() {
         <button className="btn-icone" onClick={() => setKg((k) => +(k + 0.1).toFixed(1))} aria-label="Aumentar 100 g">+</button>
       </div>
       <input type="range" min={40} max={200} step={0.1} value={kg} onChange={(e) => setKg(Number(e.target.value))} className="range" aria-label="Peso" />
+      {(() => {
+        const agora = calcularImc(kg, s.perfil.altura_cm)
+        const inicio = calcularImc(pesos[0]?.kg ?? s.perfil.peso_inicial_kg, s.perfil.altura_cm)
+        if (!agora) return <p className="legenda" style={{ textAlign: 'center' }}>Informe sua altura no cadastro para ver o IMC.</p>
+        return (
+          <div className="imc">
+            <div><span className="legenda">IMC com este peso</span><b>{num(agora.valor)}</b><small>{agora.faixa}</small></div>
+            {inicio && pesos.length > 0 && <div><span className="legenda">No início</span><b>{num(inicio.valor)}</b><small>{inicio.faixa}</small></div>}
+          </div>
+        )
+      })()}
+      <p className="legenda" style={{ textAlign: 'center', marginTop: 4 }}>IMC = peso ÷ altura² ({num(s.perfil.altura_cm / 100, 2)} m). É só uma referência: converse com seu profissional.</p>
       {pesos.length > 1 && (
         <div className="card" style={{ marginTop: 16 }}>
           <b className="card-titulo">Histórico</b>

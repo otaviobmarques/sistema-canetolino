@@ -7,13 +7,13 @@ import Icon from '../components/Icon'
 import Mascot from '../components/Mascot'
 import { useToast } from '../components/ui'
 import { lerSaude } from '../data/nuvem'
-import { LOCAL_LONGO, MODULOS, numerarAplicacoes, TIPOS_MEDIDA, vazio, type Estado, type Modulo } from '../data/store'
+import { calcularImc, LOCAL_LONGO, MODULOS, numerarAplicacoes, TIPOS_MEDIDA, vazio, type Estado, type Modulo } from '../data/store'
 import { DIA_MS, dataBR, dataCurta, diasEntre, horaBR, inicioDoDia, mesmoDia, num } from '../lib/datas'
 import { erroPt } from '../lib/supabase'
 import { formatarDose, ordinal } from '../lib/dose'
 import { baixarRelatorio } from './relatorio'
 
-type Linha = { paciente_id: string; nome: string; peso_inicial_kg: number | null; meta_proteina_g: number; meta_agua_ml: number; modulos: Modulo[]; expira_em: string | null }
+type Linha = { paciente_id: string; nome: string; peso_inicial_kg: number | null; altura_cm: number | null; meta_proteina_g: number; meta_agua_ml: number; modulos: Modulo[]; expira_em: string | null }
 
 /** Ficha completa do paciente: só os módulos autorizados (o banco não devolve o resto). */
 export default function Ficha({ c }: { c: SupabaseClient }) {
@@ -113,6 +113,12 @@ export default function Ficha({ c }: { c: SupabaseClient }) {
         {m.includes('peso') && (
           <Secao titulo="Peso e medidas" i={0}>
             {pesos.length > 1 ? <GraficoPeso pontos={pesos.map((p) => p.kg)} altura={150} /> : <p className="p-cinza">{pesos.length === 1 ? `Um registro: ${num(pesos[0].kg)} kg em ${dataBR(pesos[0].em)}.` : 'Sem pesagens no período.'}</p>}
+            {(() => {
+              const ult = [...s.pesos].sort((a, b) => +new Date(b.em) - +new Date(a.em))[0]
+              const atual = calcularImc(ult?.kg, info.altura_cm)
+              const inicial = calcularImc(info.peso_inicial_kg, info.altura_cm)
+              return atual ? <p className="p-cinza"><b>IMC atual {num(atual.valor)}</b> ({atual.faixa}){inicial ? ` · no início ${num(inicial.valor)} (${inicial.faixa})` : ''} · altura {num((info.altura_cm ?? 0) / 100, 2)} m</p> : null
+            })()}
             {pesos.length > 1 && (
               <p className="p-cinza">{num(pesos[0].kg)} kg em {dataBR(pesos[0].em)} → {num(pesos[pesos.length - 1].kg)} kg em {dataBR(pesos[pesos.length - 1].em)} ({pesos[pesos.length - 1].kg <= pesos[0].kg ? '−' : '+'}{num(Math.abs(pesos[pesos.length - 1].kg - pesos[0].kg))} kg)</p>
             )}

@@ -548,3 +548,13 @@ export function useStore() {
 }
 
 export { ehHoje }
+
+/* ============================ IMC ============================ */
+/** IMC = peso (kg) ÷ altura (m)². Classificação da OMS, só como referência (não é diagnóstico). */
+export function calcularImc(kg?: number | null, alturaCm?: number | null): { valor: number; faixa: string } | null {
+  if (!kg || !alturaCm || alturaCm < 100 || alturaCm > 250) return null
+  const valor = kg / (alturaCm / 100) ** 2
+  const faixa =
+    valor < 18.5 ? 'abaixo do peso' : valor < 25 ? 'peso adequado' : valor < 30 ? 'sobrepeso' : valor < 35 ? 'obesidade grau I' : valor < 40 ? 'obesidade grau II' : 'obesidade grau III'
+  return { valor: Math.round(valor * 10) / 10, faixa }
+}

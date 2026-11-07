@@ -11,6 +11,7 @@ import Mascot from '../components/Mascot'
 import { Anel, Interruptor, Modal, soltarConfete, useToast } from '../components/ui'
 import {
   aguaDoDia,
+  calcularImc,
   compartilhamentoAtivo,
   doseAtual,
   inicioDoTratamento,
@@ -61,6 +62,7 @@ export function Home() {
   const prot = Math.round(proteinaDoDia(s))
   const agua = aguaDoDia(s)
   const peso = ultimoPeso(s)
+  const imcAtual = calcularImc(peso?.kg, s.perfil.altura_cm)
   const variacao = peso ? peso.kg - s.perfil.peso_inicial_kg : 0
   const metasBatidas = prot >= s.perfil.meta_proteina_g && agua >= s.perfil.meta_agua_ml
   const [pulo, setPulo] = useState(0)
@@ -148,6 +150,7 @@ export function Home() {
         <div>
           <b className="card-titulo">Peso</b>
           <div className="peso-num">{peso ? `${num(peso.kg)} kg` : '—'}</div>
+          {imcAtual && <span className="legenda">IMC {num(imcAtual.valor)} · {imcAtual.faixa}</span>}
         </div>
         {peso && Math.abs(variacao) >= 0.1 && (
           <span className={`selo ${variacao < 0 ? 'selo--sucesso' : 'selo--lilas'}`}>

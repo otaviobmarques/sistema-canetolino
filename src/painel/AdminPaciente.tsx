@@ -5,7 +5,7 @@ import { Link, useParams } from 'react-router-dom'
 import GraficoPeso from '../components/GraficoPeso'
 import Mascot from '../components/Mascot'
 import { lerSaude } from '../data/nuvem'
-import { LOCAL_LONGO, numerarAplicacoes, TIPOS_MEDIDA, vazio, type Estado } from '../data/store'
+import { calcularImc, LOCAL_LONGO, numerarAplicacoes, TIPOS_MEDIDA, vazio, type Estado } from '../data/store'
 import { dataBR, dataHoraBR, DIAS_LONGOS, num } from '../lib/datas'
 import { formatarDose, ordinal } from '../lib/dose'
 import { erroPt } from '../lib/supabase'
@@ -94,10 +94,15 @@ export default function AdminPaciente({ c }: { c: SupabaseClient }) {
       <Link to="/admin/usuarios" className="p-voltar">← Usuários</Link>
       <Cabecalho titulo={p('nome')} sub={`${p('email')} · plano ${perfil.plano === 'premium' ? 'Premium' : 'Básico'} · este acesso aparece no histórico do paciente`} />
 
-      <div className="p-kpis">
+      <div className="p-kpis admin-kpis5">
         {[
           { r: 'Aplicações', v: String(apl.length), s: apl[0] ? `última em ${dataBR(apl[0].em)}` : 'nenhuma' },
           { r: 'Peso', v: pesos.length ? `${num(pesos[pesos.length - 1].kg)} kg` : '—', s: pesos.length > 1 ? `${pesos[pesos.length - 1].kg - pesos[0].kg < 0 ? '−' : '+'}${num(Math.abs(pesos[pesos.length - 1].kg - pesos[0].kg))} kg desde ${dataBR(pesos[0].em)}` : `${pesos.length} pesagem` },
+          (() => {
+            const atual = calcularImc(pesos[pesos.length - 1]?.kg, Number(perfil.altura_cm))
+            const inicial = calcularImc(pesos[0]?.kg ?? Number(perfil.peso_inicial_kg), Number(perfil.altura_cm))
+            return { r: 'IMC', v: atual ? num(atual.valor) : '—', s: atual ? `${atual.faixa}${inicial ? ` · início ${num(inicial.valor)}` : ''}` : 'sem altura ou peso' }
+          })(),
           { r: 'Refeições', v: String(refeicoes.length), s: `${refeicoes.filter((r) => r.origem === 'ia_estimativa').length} pela IA` },
           { r: 'Sintomas', v: String(s.sintomas.length), s: `${s.sintomas.filter((x) => x.alerta).length} com alerta` },
         ].map((k) => (

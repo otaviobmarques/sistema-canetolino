@@ -138,11 +138,15 @@ Deno.serve(async (req) => {
   let modulos = ['peso', 'nutricao', 'aplicacoes', 'sintomas', 'bemestar']
   let autor = ''
   let metaProt = 100
+  let altura: number | null = null
+  let pesoInicial: number | null = null
   if (proprio) {
-    const { data: p } = await c.from('profiles').select('nome, plano, meta_proteina_g').eq('user_id', u.user.id).maybeSingle()
+    const { data: p } = await c.from('profiles').select('nome, plano, meta_proteina_g, altura_cm, peso_inicial_kg').eq('user_id', u.user.id).maybeSingle()
     if (p?.plano !== 'premium') return json({ erro: 'premium' }, 402)
     nome = p?.nome || nome
     metaProt = p?.meta_proteina_g ?? 100
+    altura = p?.altura_cm ?? null
+    pesoInicial = p?.peso_inicial_kg == null ? null : Number(p.peso_inicial_kg)
   } else {
     const { data: lista, error } = await c.rpc('pacientes_do_profissional')
     if (error) return json({ erro: 'sem_acesso' }, 403)
@@ -151,6 +155,8 @@ Deno.serve(async (req) => {
     nome = l.nome || nome
     modulos = l.modulos
     metaProt = l.meta_proteina_g ?? 100
+    altura = l.altura_cm ?? null
+    pesoInicial = l.peso_inicial_kg == null ? null : Number(l.peso_inicial_kg)
     const { data: pr } = await c.from('professionals').select('nome, profissao, registro_conselho').maybeSingle()
     autor = pr ? `${pr.nome}, ${pr.profissao} (${pr.registro_conselho})` : 'profissional autorizado'
   }
@@ -176,6 +182,14 @@ Deno.serve(async (req) => {
       const a = Number(pesos[0].peso_kg), b = Number(pesos[pesos.length - 1].peso_kg)
       d.texto(`${n1(a)} kg em ${data(pesos[0].registrado_em)} -> ${n1(b)} kg em ${data(pesos[pesos.length - 1].registrado_em)} (${sinal(b - a)}${n1(Math.abs(b - a))} kg). ${pesos.length} pesagens registradas.`)
     } else d.texto(pesos.length ? `Uma pesagem: ${n1(Number(pesos[0].peso_kg))} kg em ${data(pesos[0].registrado_em)}.` : 'Sem pesagens no período.', { cor: CINZA })
+    // IMC (peso ÷ altura²), classificação da OMS como referência
+    const imc = (kg: number | null) => (kg && altura && altura >= 100 ? kg / (altura / 100) ** 2 : null)
+    const faixa = (v: number) => (v < 18.5 ? 'abaixo do peso' : v < 25 ? 'peso adequado' : v < 30 ? 'sobrepeso' : v < 35 ? 'obesidade grau I' : v < 40 ? 'obesidade grau II' : 'obesidade grau III')
+    const { data: ultPeso } = await c.from('weight_records').select('peso_kg').eq('user_id', pacienteId).order('registrado_em', { ascending: false }).limit(1)
+    const imcAtual = imc(ultPeso?.[0] ? Number(ultPeso[0].peso_kg) : null)
+    const imcInicio = imc(pesoInicial)
+    if (imcAtual)
+      d.texto(`IMC atual ${n1(imcAtual)} (${faixa(imcAtual)})${imcInicio ? ` · no início do tratamento ${n1(imcInicio)} (${faixa(imcInicio)})` : ''} · altura ${(altura! / 100).toFixed(2).replace('.', ',')} m. IMC é referência populacional, não diagnóstico.`, { tam: 9, cor: CINZA })
     const tipos = [...new Set(medidas.map((m) => m.tipo))]
     if (tipos.length)
       d.tabela(

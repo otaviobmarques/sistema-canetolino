@@ -28,8 +28,8 @@ Depois de salvar, clique em **Verify** no Resend (a propagação pode levar de m
 
 ## 3. Supabase → Authentication → URL Configuration
 
-- Site URL: `https://sistema-canetolino.vercel.app`
-- Redirect URLs: `https://sistema-canetolino.vercel.app/**`
+- Site URL: `https://canetolino.com.br`
+- Redirect URLs: `https://canetolino.com.br/**` e `https://sistema-canetolino.vercel.app/**`
 
 ## 4. Supabase → Authentication → Emails → Templates
 

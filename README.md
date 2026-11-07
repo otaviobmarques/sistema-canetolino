@@ -21,7 +21,7 @@ npm run dev
 
 Build de produção: `npm run build` (sai em `dist/`).
 
-**No ar:** https://sistema-canetolino.vercel.app (Vercel, ligada a este repositório: cada push na `main` publica sozinho).
+**No ar:** https://canetolino.com.br (Vercel, ligada a este repositório: cada push na `main` publica sozinho; `www` e `sistema-canetolino.vercel.app` também respondem).
 
 ## Backend (Supabase)
 

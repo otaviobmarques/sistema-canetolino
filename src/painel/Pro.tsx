@@ -1,15 +1,20 @@
+import type { SupabaseClient } from '@supabase/supabase-js'
 import { AnimatePresence, motion } from 'framer-motion'
-import { useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Navigate, Route, Routes } from 'react-router-dom'
 import GraficoPeso from '../components/GraficoPeso'
 import Icon from '../components/Icon'
 import Mascot from '../components/Mascot'
 import { Modal, useToast } from '../components/ui'
-import { compartilhamentoAtivo, MODULOS, semana, ultimoPeso, useStore, type Estado, type Modulo } from '../data/store'
-import { DIA_MS, dataBR, dataHoraBR, num, relativo, uid } from '../lib/datas'
-import { Cabecalho, LoginPainel, PainelLayout, usarSessao } from './Layout'
+import { lerSaude } from '../data/nuvem'
+import { MODULOS, semana, ultimoPeso, vazio, type Modulo } from '../data/store'
+import { DIA_MS, dataBR, dataHoraBR, num, relativo } from '../lib/datas'
+import { erroPt } from '../lib/supabase'
+import { AuthPainel, usePainel } from './Auth'
+import { Cabecalho, PainelLayout } from './Layout'
 
-/* Pacientes de exemplo (estáticos). Jessica vem do app, ao vivo, conforme a permissão dela. */
+type Profissional = { id: string; nome: string; profissao: string; registro_conselho: string; uf: string | null; codigo_convite: string; verificado: boolean }
+
 type Paciente = {
   id: string
   nome: string
@@ -22,45 +27,40 @@ type Paciente = {
   expira: string | null
   resumo: string
   pesos?: number[]
-  aoVivo?: boolean
 }
 
-const EXEMPLOS: Paciente[] = [
-  { id: 'marcos', nome: 'Marcos L.', atualizado: 'ontem', peso: -3.2, proteina: 71, aplicacoes: '3 de 4', alerta: 'sintoma forte', modulos: ['peso', 'nutricao', 'aplicacoes', 'sintomas'], expira: '2027-01-15', resumo: 'Registrou vômitos persistentes ontem e recebeu o alerta para procurar atendimento. Proteína abaixo da meta em 5 de 7 dias.', pesos: [104.1, 103.5, 102.9, 102.6, 102.2, 101.8, 101.3, 100.9] },
-  { id: 'carla', nome: 'Carla M.', atualizado: 'há 5 dias', peso: -1.0, aplicacoes: '4 de 4', modulos: ['peso', 'aplicacoes'], expira: null, resumo: 'Aplicações em dia. Poucos registros nesta semana.', pesos: [76.2, 76.0, 75.9, 75.6, 75.5, 75.4, 75.3, 75.2] },
-  { id: 'paulo', nome: 'Paulo R.', atualizado: 'hoje', peso: -8.4, proteina: 102, aplicacoes: '4 de 4', modulos: ['peso', 'nutricao', 'aplicacoes', 'sintomas'], expira: '2026-12-20', resumo: 'Proteína na meta em 6 de 7 dias. Três treinos de força. Nenhum sintoma registrado.', pesos: [112.3, 111.0, 109.8, 108.4, 107.1, 106.0, 104.9, 103.9] },
-]
+type LinhaPaciente = { paciente_id: string; nome: string; peso_inicial_kg: number | null; meta_proteina_g: number; meta_agua_ml: number; modulos: Modulo[]; expira_em: string | null }
 
-function pacienteDoApp(s: Estado): Paciente | null {
-  const c = s.compartilhamentos.find((x) => x.profissionalId === 'ana' && compartilhamentoAtivo(x))
-  if (!c || !s.sessao) return null
-  const m = c.modulos
+/** Monta o resumo do paciente só com os módulos autorizados (o banco já não devolve o resto). */
+async function montarPaciente(c: SupabaseClient, l: LinhaPaciente): Promise<Paciente> {
+  const base = vazio()
+  const s = await lerSaude(c, l.paciente_id, { ...base, perfil: { ...base.perfil, nome: l.nome, peso_inicial_kg: Number(l.peso_inicial_kg ?? 0), meta_proteina_g: l.meta_proteina_g, meta_agua_ml: l.meta_agua_ml } })
+  const m = l.modulos
   const w = semana(s)
   const up = ultimoPeso(s)
-  const ultimos = [
-    ...s.refeicoes.map((r) => r.em), ...s.agua.map((r) => r.em), ...s.pesos.map((r) => r.em), ...s.aplicacoes.map((r) => r.em), ...s.sintomas.map((r) => r.em),
-  ].sort().pop()
-  const quatroSemanas = Date.now() - 28 * DIA_MS
-  const apl = s.aplicacoes.filter((a) => new Date(a.em).getTime() >= quatroSemanas).length
+  const datas = [...s.refeicoes.map((r) => r.em), ...s.agua.map((r) => r.em), ...s.pesos.map((r) => r.em), ...s.aplicacoes.map((r) => r.em), ...s.sintomas.map((r) => r.em), ...s.treinos.map((r) => r.em)].sort()
+  const ult = datas[datas.length - 1]
+  const apl = s.aplicacoes.filter((a) => new Date(a.em).getTime() >= Date.now() - 28 * DIA_MS).length
   const alertas = s.sintomas.filter((x) => x.alerta && new Date(x.em).getTime() >= w.inicio.getTime())
+  const pesoIni = s.perfil.peso_inicial_kg || s.pesos[0]?.kg
   const partes: string[] = []
-  if (m.includes('nutricao') && w.proteinaMedia) partes.push(`Proteína na meta em ${w.diasProteinaMeta} de 7 dias (média ${w.proteinaMedia} g/dia).`)
-  if (m.includes('peso') && s.pesos.length > 1) partes.push(up.kg < s.perfil.peso_inicial_kg ? 'Peso caindo de forma constante.' : 'Peso estável nas últimas semanas.')
-  if (m.includes('sintomas')) partes.push(w.sintomasSemana.length ? `Sintomas: ${[...new Set(w.sintomasSemana.flatMap((x) => x.sintomas))].join(', ').toLowerCase()}.` : 'Nenhum sintoma registrado.')
-  if (m.includes('aplicacoes')) partes.push(`${Math.min(apl, 4)} de 4 aplicações registradas no último mês.`)
+  if (m.includes('nutricao')) partes.push(w.proteinaMedia ? `Proteína na meta em ${w.diasProteinaMeta} de 7 dias (média ${w.proteinaMedia} g/dia). Água na meta em ${w.diasAguaMeta} dias.` : 'Sem refeições registradas na semana.')
+  if (m.includes('peso') && s.pesos.length > 1) partes.push(up.kg < pesoIni ? 'Peso em queda desde o início.' : 'Peso estável ou em alta desde o início.')
+  if (m.includes('sintomas')) partes.push(w.sintomasSemana.length ? `Sintomas na semana: ${[...new Set(w.sintomasSemana.flatMap((x) => x.sintomas))].join(', ').toLowerCase()}.` : 'Nenhum sintoma registrado.')
+  if (m.includes('aplicacoes')) partes.push(`${Math.min(apl, 4)} de 4 aplicações registradas nas últimas 4 semanas.`)
+  if (m.includes('bemestar')) partes.push(`${w.treinosForca} treino(s) de força na semana.`)
   return {
-    id: 'jessica',
-    nome: `${s.perfil.nome || 'Paciente'} B.`,
-    atualizado: ultimos ? relativo(ultimos) : '—',
-    peso: m.includes('peso') && up ? +(up.kg - s.perfil.peso_inicial_kg).toFixed(1) : undefined,
+    id: l.paciente_id,
+    nome: l.nome || 'Paciente',
+    atualizado: ult ? relativo(ult) : 'sem registros',
+    peso: m.includes('peso') && up && pesoIni && s.pesos.length > 1 ? +(up.kg - pesoIni).toFixed(1) : undefined,
     proteina: m.includes('nutricao') ? w.proteinaMedia : undefined,
     aplicacoes: m.includes('aplicacoes') ? `${Math.min(apl, 4)} de 4` : undefined,
     alerta: m.includes('sintomas') && alertas.length ? 'sintoma forte' : undefined,
     modulos: m,
-    expira: c.expira_em,
-    resumo: partes.join(' ') || 'Sem dados nos módulos autorizados nesta semana.',
+    expira: l.expira_em,
+    resumo: partes.join(' ') || 'Sem dados nos módulos autorizados.',
     pesos: m.includes('peso') ? [...s.pesos].sort((a, b) => +new Date(a.em) - +new Date(b.em)).slice(-8).map((p) => p.kg) : undefined,
-    aoVivo: true,
   }
 }
 
@@ -74,44 +74,149 @@ const ITENS = [
 type Relatorio = { id: string; paciente: string; em: string; modulos: Modulo[] }
 
 export default function ProPainel() {
-  const sessao = usarSessao('canetolino:pro')
+  const { c, estado, avaliar, sair, sessao } = usePainel('pro')
+  const [prof, setProf] = useState<Profissional | null | undefined>(undefined)
   const [relatorios, setRelatorios] = useState<Relatorio[]>([])
-  if (!sessao.ok)
-    return <LoginPainel sufixo="Pro" emailPadrao="ana.souza@nutri.com.br" onEntrar={sessao.entrar} descricao="Acompanhe seus pacientes entre as consultas, vendo só o que cada um autorizou." />
+
+  const carregarProf = useCallback(async () => {
+    const { data, error } = await c.from('professionals').select('*').maybeSingle()
+    if (error) throw error
+    setProf(data as Profissional | null)
+  }, [c])
+
+  useEffect(() => {
+    if (estado === 'pronto') carregarProf().catch(() => setProf(null))
+    else setProf(undefined)
+  }, [estado, carregarProf])
+
+  if (estado !== 'pronto')
+    return (
+      <AuthPainel
+        area="pro"
+        c={c}
+        estado={estado}
+        onPronto={avaliar}
+        descricao="Acompanhe seus pacientes entre as consultas, vendo só o que cada um autorizou."
+        tituloCadastro="Criar conta"
+        camposCadastro={[
+          { id: 'nome', rotulo: 'Nome completo (como no conselho)', placeholder: 'Dra. Ana Souza' },
+          { id: 'profissao', rotulo: 'Profissão', opcoes: ['Nutricionista', 'Médico(a) endocrinologista', 'Médico(a)', 'Educador(a) físico(a)', 'Psicólogo(a)', 'Outro'] },
+          { id: 'registro', rotulo: 'Registro no conselho', placeholder: 'CRN-3 12345' },
+          { id: 'uf', rotulo: 'UF', placeholder: 'SP' },
+        ]}
+        metaCadastro={(v) => ({ tipo: 'profissional', nome: v.nome ?? '', profissao: v.profissao ?? '', registro: v.registro ?? '', uf: (v.uf ?? '').slice(0, 2) })}
+      />
+    )
+
+  if (prof === undefined) return <div className="p-carregando"><Mascot expressao="pensativo" size={100} /></div>
+  if (prof === null) return <CompletarCadastro c={c} onPronto={carregarProf} onSair={sair} />
+
   return (
-    <PainelLayout sufixo="Pro" itens={ITENS} usuario={{ nome: 'Dra. Ana Souza', papel: 'Nutricionista · CRN-3' }} onSair={sessao.sair}>
+    <PainelLayout sufixo="Pro" itens={ITENS} usuario={{ nome: prof.nome, papel: `${prof.profissao} · ${prof.registro_conselho}` }} onSair={sair}>
       <Routes>
-        <Route index element={<Pacientes onRelatorio={(r) => setRelatorios((l) => [r, ...l])} />} />
-        <Route path="convites" element={<Convites />} />
+        <Route index element={<Pacientes c={c} prof={prof} onRelatorio={(r) => setRelatorios((l) => [r, ...l])} />} />
+        <Route path="convites" element={<Convites c={c} prof={prof} />} />
         <Route path="relatorios" element={<Relatorios lista={relatorios} />} />
-        <Route path="conta" element={<Conta />} />
+        <Route path="conta" element={<Conta prof={prof} email={sessao?.user.email ?? ''} />} />
         <Route path="*" element={<Navigate to="/pro" replace />} />
       </Routes>
     </PainelLayout>
   )
 }
 
+function CompletarCadastro({ c, onPronto, onSair }: { c: SupabaseClient; onPronto: () => void; onSair: () => void }) {
+  const [v, setV] = useState({ nome: '', profissao: 'Nutricionista', registro: '', uf: '' })
+  const [erro, setErro] = useState('')
+  return (
+    <div className="p-carregando">
+      <form
+        className="p-card p-form-card"
+        onSubmit={async (e) => {
+          e.preventDefault()
+          const { error } = await c.rpc('criar_profissional', { p_nome: v.nome, p_profissao: v.profissao, p_registro: v.registro, p_uf: v.uf })
+          if (error) return setErro(erroPt(error))
+          onPronto()
+        }}
+      >
+        <Mascot expressao="acenando" size={80} />
+        <h2 style={{ marginTop: 8 }}>Complete seu cadastro profissional</h2>
+        <p className="p-cinza">Com ele você recebe seu código de convite para os pacientes.</p>
+        <label className="rotulo" htmlFor="cn">Nome completo</label>
+        <input id="cn" className="campo" value={v.nome} onChange={(e) => setV({ ...v, nome: e.target.value })} required />
+        <label className="rotulo" htmlFor="cp">Profissão</label>
+        <input id="cp" className="campo" value={v.profissao} onChange={(e) => setV({ ...v, profissao: e.target.value })} required />
+        <div className="duas-col">
+          <div>
+            <label className="rotulo" htmlFor="cr">Registro no conselho</label>
+            <input id="cr" className="campo" value={v.registro} onChange={(e) => setV({ ...v, registro: e.target.value })} required />
+          </div>
+          <div>
+            <label className="rotulo" htmlFor="cu">UF</label>
+            <input id="cu" className="campo" maxLength={2} value={v.uf} onChange={(e) => setV({ ...v, uf: e.target.value.toUpperCase() })} />
+          </div>
+        </div>
+        {erro && <p className="erro-campo">{erro}</p>}
+        <div className="duas-col" style={{ marginTop: 18 }}>
+          <button type="button" className="btn btn--contorno" onClick={onSair}>Sair</button>
+          <button className="btn btn--primario">Salvar</button>
+        </div>
+      </form>
+    </div>
+  )
+}
+
 const NA = <span className="p-na">não autorizado</span>
 
-function Pacientes({ onRelatorio }: { onRelatorio: (r: Relatorio) => void }) {
-  const { s, set } = useStore()
+function Pacientes({ c, prof, onRelatorio }: { c: SupabaseClient; prof: Profissional; onRelatorio: (r: Relatorio) => void }) {
   const toast = useToast()
   const [busca, setBusca] = useState('')
-  const [selId, setSelId] = useState('jessica')
+  const [lista, setLista] = useState<Paciente[] | null>(null)
+  const [erro, setErro] = useState('')
+  const [selId, setSelId] = useState<string | null>(null)
   const [pdf, setPdf] = useState(false)
   const [convite, setConvite] = useState(false)
-  const jessica = pacienteDoApp(s)
-  const todos = useMemo(() => [...(jessica ? [jessica] : []), ...EXEMPLOS], [jessica])
-  const lista = todos.filter((p) => p.nome.toLowerCase().includes(busca.toLowerCase()))
-  const sel = todos.find((p) => p.id === selId) ?? todos[0]
+  const registrados = useRef(new Set<string>())
 
-  const registrar = (acao: string) => {
-    if (sel?.aoVivo) set((x) => ({ ...x, auditoria: [...x.auditoria, { id: uid(), ator: 'Dra. Ana Souza', acao, em: new Date().toISOString() }] }))
-  }
+  const carregar = useCallback(async () => {
+    try {
+      const { data, error } = await c.rpc('pacientes_do_profissional')
+      if (error) throw error
+      const pacientes = await Promise.all(((data ?? []) as LinhaPaciente[]).map((l) => montarPaciente(c, l)))
+      setLista(pacientes)
+      setErro('')
+    } catch (e) {
+      setErro(erroPt(e))
+    }
+  }, [c])
+
+  // atualiza a cada 20 s: quem revogou some da lista na próxima atualização
+  useEffect(() => {
+    carregar()
+    const iv = setInterval(carregar, 20000)
+    return () => clearInterval(iv)
+  }, [carregar])
+
+  const filtrada = useMemo(() => (lista ?? []).filter((p) => p.nome.toLowerCase().includes(busca.toLowerCase())), [lista, busca])
+  const sel = filtrada.find((p) => p.id === selId) ?? filtrada[0]
+
+  // todo acesso fica no histórico do paciente
+  const registrar = useCallback(
+    async (p: Paciente, acao: string) => {
+      const { error } = await c.rpc('registrar_acesso', { p_paciente: p.id, p_acao: acao })
+      if (error) toast(erroPt(error), 'info')
+    },
+    [c, toast],
+  )
+  useEffect(() => {
+    if (sel && !registrados.current.has(sel.id)) {
+      registrados.current.add(sel.id)
+      registrar(sel, 'Abriu o resumo do paciente')
+    }
+  }, [sel, registrar])
 
   return (
     <>
-      <Cabecalho titulo="Pacientes" sub="Dra. Ana Souza · você vê apenas o que cada paciente autorizou">
+      <Cabecalho titulo="Pacientes" sub={`${prof.nome} · você vê apenas o que cada paciente autorizou`}>
         <div className="p-busca">
           <Icon name="search" size={18} />
           <input className="campo" placeholder="Buscar paciente" value={busca} onChange={(e) => setBusca(e.target.value)} aria-label="Buscar paciente" />
@@ -119,77 +224,81 @@ function Pacientes({ onRelatorio }: { onRelatorio: (r: Relatorio) => void }) {
         <button className="btn btn--primario" onClick={() => setConvite(true)}>+ Convidar paciente</button>
       </Cabecalho>
 
-      <div className="p-pacientes">
-        <div className="p-tabela-wrap">
-          <table className="p-tabela">
-            <thead>
-              <tr>
-                <th>Paciente</th>
-                <th>Atualizado</th>
-                <th>Peso</th>
-                <th>Proteína média</th>
-                <th>Aplicações</th>
-                <th>Alertas</th>
-              </tr>
-            </thead>
-            <tbody>
-              <AnimatePresence initial={false}>
-                {lista.map((p, i) => (
-                  <motion.tr
-                    key={p.id}
-                    layout
-                    initial={{ opacity: 0, x: -14 }}
-                    animate={{ opacity: 1, x: 0, transition: { delay: i * 0.05 } }}
-                    exit={{ opacity: 0, x: 40, transition: { duration: 0.3 } }}
-                    className={sel?.id === p.id ? 'is-sel' : ''}
-                    onClick={() => {
-                      setSelId(p.id)
-                      if (p.aoVivo) set((x) => ({ ...x, auditoria: [...x.auditoria, { id: uid(), ator: 'Dra. Ana Souza', acao: 'Abriu o resumo do paciente', em: new Date().toISOString() }] }))
-                    }}
-                    tabIndex={0}
-                    onKeyDown={(e) => e.key === 'Enter' && setSelId(p.id)}
-                  >
-                    <td><b>{p.nome}</b>{p.aoVivo && <span className="p-vivo" title="Dados ao vivo do app">ao vivo</span>}</td>
-                    <td className="p-cinza">{p.atualizado}</td>
-                    <td>{p.peso !== undefined ? `${p.peso < 0 ? '−' : '+'}${num(Math.abs(p.peso))} kg` : NA}</td>
-                    <td>{p.proteina !== undefined ? (p.proteina ? `${p.proteina} g/dia` : 'sem dados') : NA}</td>
-                    <td>{p.aplicacoes ?? NA}</td>
-                    <td>{p.alerta ? <span className="selo selo--alerta">{p.alerta}</span> : <span className="p-cinza">nenhum</span>}</td>
-                  </motion.tr>
-                ))}
-              </AnimatePresence>
-            </tbody>
-          </table>
-          {!jessica && (
-            <div className="p-dica">
-              <Mascot expressao="dormindo" size={48} flutuar={false} />
-              <span>A paciente do app (Jessica) não aparece porque o acesso foi revogado, expirou, ou a conta de demonstração não está carregada. Abra o app para autorizar com o código <b>ANA-4821</b>.</span>
-            </div>
-          )}
-          {lista.length === 0 && <p className="p-cinza" style={{ padding: 20 }}>Nenhum paciente encontrado.</p>}
+      {lista === null ? (
+        <div className="p-tabela-wrap" style={{ padding: 16, display: 'grid', gap: 10 }}>
+          {[0, 1, 2].map((i) => <div key={i} className="skeleton" style={{ height: 52 }} />)}
         </div>
+      ) : lista.length === 0 ? (
+        <div className="p-vazio">
+          <Mascot expressao="piscando" size={110} />
+          <h2>Nenhum paciente ainda</h2>
+          <p>Envie seu código <b className="p-mono">{prof.codigo_convite}</b>. O paciente autoriza no app em Perfil → Compartilhar e aparece aqui.</p>
+          <button className="btn btn--primario" onClick={() => setConvite(true)}>Convidar paciente</button>
+        </div>
+      ) : (
+        <div className="p-pacientes">
+          <div className="p-tabela-wrap">
+            <table className="p-tabela">
+              <thead>
+                <tr>
+                  <th>Paciente</th>
+                  <th>Atualizado</th>
+                  <th>Peso</th>
+                  <th>Proteína média</th>
+                  <th>Aplicações</th>
+                  <th>Alertas</th>
+                </tr>
+              </thead>
+              <tbody>
+                <AnimatePresence initial={false}>
+                  {filtrada.map((p, i) => (
+                    <motion.tr
+                      key={p.id}
+                      layout
+                      initial={{ opacity: 0, x: -14 }}
+                      animate={{ opacity: 1, x: 0, transition: { delay: i * 0.04 } }}
+                      exit={{ opacity: 0, x: 40, transition: { duration: 0.3 } }}
+                      className={sel?.id === p.id ? 'is-sel' : ''}
+                      onClick={() => setSelId(p.id)}
+                      tabIndex={0}
+                      onKeyDown={(e) => e.key === 'Enter' && setSelId(p.id)}
+                    >
+                      <td><b>{p.nome}</b></td>
+                      <td className="p-cinza">{p.atualizado}</td>
+                      <td>{p.peso !== undefined ? `${p.peso < 0 ? '−' : '+'}${num(Math.abs(p.peso))} kg` : p.modulos.includes('peso') ? <span className="p-cinza">{p.pesos?.length === 1 ? '1 registro' : 'sem dados'}</span> : NA}</td>
+                      <td>{p.proteina !== undefined ? (p.proteina ? `${p.proteina} g/dia` : 'sem dados') : NA}</td>
+                      <td>{p.aplicacoes ?? NA}</td>
+                      <td>{p.alerta ? <span className="selo selo--alerta">{p.alerta}</span> : <span className="p-cinza">{p.modulos.includes('sintomas') ? 'nenhum' : '—'}</span>}</td>
+                    </motion.tr>
+                  ))}
+                </AnimatePresence>
+              </tbody>
+            </table>
+            {erro && <div className="p-dica"><Mascot expressao="alerta" size={40} flutuar={false} /><span>{erro}</span></div>}
+          </div>
 
-        {sel && (
-          <AnimatePresence mode="wait">
-            <motion.aside key={sel.id} className="p-resumo" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -10 }} transition={{ duration: 0.3 }}>
-              <span className="p-sobre">Resumo do paciente</span>
-              <h2>{sel.nome}</h2>
-              <p className="p-cinza">Autorizou: {sel.modulos.map((m) => MODULOS.find((x) => x.id === m)!.nome.toLowerCase()).join(', ')}</p>
-              <p className="p-cinza">Acesso até: {sel.expira ? dataBR(sel.expira) : 'o paciente revogar'}</p>
-              {sel.pesos && sel.pesos.length > 1 && (
-                <div className="p-grafico">
-                  <GraficoPeso pontos={sel.pesos} altura={130} />
-                </div>
-              )}
-              <div className="p-texto-resumo">{sel.resumo}</div>
-              <button className="btn btn--contorno btn--bloco" onClick={() => { setPdf(true); registrar('Gerou relatório em PDF') }}>
-                <Icon name="file" size={18} /> Gerar relatório em PDF
-              </button>
-              <p className="legenda" style={{ marginTop: 10 }}>Este acesso fica registrado no histórico do paciente.</p>
-            </motion.aside>
-          </AnimatePresence>
-        )}
-      </div>
+          {sel && (
+            <AnimatePresence mode="wait">
+              <motion.aside key={sel.id} className="p-resumo" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -10 }} transition={{ duration: 0.3 }}>
+                <span className="p-sobre">Resumo do paciente</span>
+                <h2>{sel.nome}</h2>
+                <p className="p-cinza">Autorizou: {sel.modulos.map((m) => MODULOS.find((x) => x.id === m)!.nome.toLowerCase()).join(', ')}</p>
+                <p className="p-cinza">Acesso até: {sel.expira ? dataBR(sel.expira) : 'o paciente revogar'}</p>
+                {sel.pesos && sel.pesos.length > 1 && (
+                  <div className="p-grafico">
+                    <GraficoPeso pontos={sel.pesos} altura={130} />
+                  </div>
+                )}
+                <div className="p-texto-resumo">{sel.resumo}</div>
+                <button className="btn btn--contorno btn--bloco" onClick={() => { setPdf(true); registrar(sel, 'Gerou relatório em PDF') }}>
+                  <Icon name="file" size={18} /> Gerar relatório em PDF
+                </button>
+                <p className="legenda" style={{ marginTop: 10 }}>Este acesso fica registrado no histórico do paciente.</p>
+              </motion.aside>
+            </AnimatePresence>
+          )}
+        </div>
+      )}
 
       <Modal aberto={pdf} onFechar={() => setPdf(false)} largura={620}>
         {sel && (
@@ -197,7 +306,7 @@ function Pacientes({ onRelatorio }: { onRelatorio: (r: Relatorio) => void }) {
             <div className="relatorio__topo">
               <div>
                 <b className="logo" style={{ fontSize: 20, color: 'var(--roxo)' }}>canetolino<em>Pro</em></b>
-                <p className="legenda">Relatório do período · gerado em {dataHoraBR(new Date())}</p>
+                <p className="legenda">Relatório do período · gerado em {dataHoraBR(new Date())} por {prof.nome}</p>
               </div>
               <Mascot expressao="feliz" size={40} flutuar={false} />
             </div>
@@ -205,22 +314,21 @@ function Pacientes({ onRelatorio }: { onRelatorio: (r: Relatorio) => void }) {
             <p className="legenda">Módulos autorizados: {sel.modulos.map((m) => MODULOS.find((x) => x.id === m)!.nome).join(' · ')}</p>
             <table className="p-tabela p-tabela--simples">
               <tbody>
-                <tr><td>Variação de peso</td><td>{sel.peso !== undefined ? `${num(sel.peso)} kg` : 'não autorizado'}</td></tr>
-                <tr><td>Proteína média</td><td>{sel.proteina !== undefined ? `${sel.proteina} g/dia (inclui estimativas da IA)` : 'não autorizado'}</td></tr>
+                <tr><td>Variação de peso</td><td>{sel.peso !== undefined ? `${num(sel.peso)} kg` : sel.modulos.includes('peso') ? 'sem dados' : 'não autorizado'}</td></tr>
+                <tr><td>Proteína média (7 dias)</td><td>{sel.proteina !== undefined ? `${sel.proteina} g/dia (inclui estimativas da IA)` : 'não autorizado'}</td></tr>
                 <tr><td>Aplicações (4 semanas)</td><td>{sel.aplicacoes ?? 'não autorizado'}</td></tr>
-                <tr><td>Alertas</td><td>{sel.alerta ?? 'nenhum'}</td></tr>
+                <tr><td>Alertas</td><td>{sel.modulos.includes('sintomas') ? sel.alerta ?? 'nenhum' : 'não autorizado'}</td></tr>
               </tbody>
             </table>
             {sel.pesos && sel.pesos.length > 1 && <GraficoPeso pontos={sel.pesos} altura={120} />}
             <p style={{ marginTop: 10 }}>{sel.resumo}</p>
-            <p className="legenda" style={{ marginTop: 12 }}>Dados marcados por origem: registrados pelo paciente, importados de integrações e estimados pela IA. O Canetolino não faz avaliação médica nem recomenda doses.</p>
+            <p className="legenda" style={{ marginTop: 12 }}>Dados registrados pelo paciente; refeições podem conter estimativas da IA, conferidas por ele. O Canetolino não faz avaliação médica nem recomenda doses.</p>
             <div className="duas-col nao-imprimir" style={{ marginTop: 18 }}>
               <button className="btn btn--contorno" onClick={() => setPdf(false)}>Fechar</button>
               <button
                 className="btn btn--primario"
                 onClick={() => {
-                  onRelatorio({ id: uid(), paciente: sel.nome, em: new Date().toISOString(), modulos: sel.modulos })
-                  toast('Relatório gerado')
+                  onRelatorio({ id: crypto.randomUUID(), paciente: sel.nome, em: new Date().toISOString(), modulos: sel.modulos })
                   window.print()
                 }}
               >
@@ -230,82 +338,97 @@ function Pacientes({ onRelatorio }: { onRelatorio: (r: Relatorio) => void }) {
           </div>
         )}
       </Modal>
-      <ModalConvite aberto={convite} onFechar={() => setConvite(false)} />
+      <ModalConvite aberto={convite} onFechar={() => setConvite(false)} codigo={prof.codigo_convite} />
     </>
   )
 }
 
-function ModalConvite({ aberto, onFechar }: { aberto: boolean; onFechar: () => void }) {
+function ModalConvite({ aberto, onFechar, codigo }: { aberto: boolean; onFechar: () => void; codigo: string }) {
   const toast = useToast()
-  const [email, setEmail] = useState('')
+  const texto = `Oi! Para eu acompanhar seu tratamento no Canetolino, abra o app, vá em Perfil → Compartilhar e use o código ${codigo}. ${window.location.origin}/#/app`
   return (
     <Modal aberto={aberto} onFechar={onFechar}>
       <h3>Convidar paciente</h3>
-      <p className="legenda">O paciente recebe o código e escolhe, no app, o que você poderá ver.</p>
+      <p className="legenda">O paciente usa o código no app e escolhe o que você poderá ver.</p>
       <div className="p-codigo">
-        <span>ANA-4821</span>
-        <button className="btn btn--lilas btn--pequeno" onClick={() => { navigator.clipboard?.writeText('ANA-4821'); toast('Código copiado') }}>
+        <span>{codigo}</span>
+        <button className="btn btn--lilas btn--pequeno" onClick={() => { navigator.clipboard?.writeText(codigo); toast('Código copiado') }}>
           <Icon name="copy" size={16} /> Copiar
         </button>
       </div>
-      <label className="rotulo" htmlFor="ce">Ou envie por e-mail</label>
-      <input id="ce" className="campo" type="email" placeholder="paciente@email.com" value={email} onChange={(e) => setEmail(e.target.value)} />
       <div className="duas-col" style={{ marginTop: 18 }}>
-        <button className="btn btn--contorno" onClick={onFechar}>Cancelar</button>
-        <button className="btn btn--primario" disabled={!email.includes('@')} onClick={() => { toast(`Convite enviado para ${email}`); setEmail(''); onFechar() }}>Enviar convite</button>
+        <a className="btn btn--contorno" href={`https://wa.me/?text=${encodeURIComponent(texto)}`} target="_blank" rel="noreferrer">Enviar no WhatsApp</a>
+        <a className="btn btn--primario" href={`mailto:?subject=${encodeURIComponent('Convite Canetolino')}&body=${encodeURIComponent(texto)}`}>Enviar por e-mail</a>
       </div>
     </Modal>
   )
 }
 
-function Convites() {
+function gerarCodigo(nome: string) {
+  const base = nome.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/^(dra?\.?)\s+/i, '').replace(/[^A-Za-z]/g, '').slice(0, 3).toUpperCase().padEnd(3, 'X')
+  return `${base}-${String(Math.floor(Math.random() * 10000)).padStart(4, '0')}`
+}
+
+function Convites({ c, prof }: { c: SupabaseClient; prof: Profissional }) {
   const toast = useToast()
-  const [lista, setLista] = useState([
-    { codigo: 'ANA-7310', para: 'roberta.s@email.com', criado: new Date(Date.now() - 2 * DIA_MS).toISOString(), status: 'pendente' },
-    { codigo: 'ANA-5528', para: 'Link copiado', criado: new Date(Date.now() - 9 * DIA_MS).toISOString(), status: 'expirado' },
-  ])
+  const [lista, setLista] = useState<{ code: string; enviado_para: string | null; created_at: string; expira_em: string; usado_em: string | null }[]>([])
+  const carregar = useCallback(async () => {
+    const { data } = await c.from('invite_codes').select('*').eq('profissional_id', prof.id).order('created_at', { ascending: false })
+    setLista(data ?? [])
+  }, [c, prof.id])
+  useEffect(() => {
+    carregar()
+  }, [carregar])
+
+  const novo = async () => {
+    for (let t = 0; t < 4; t++) {
+      const code = gerarCodigo(prof.nome)
+      const { error } = await c.from('invite_codes').insert({ code, profissional_id: prof.id, enviado_para: 'código avulso' })
+      if (!error) {
+        navigator.clipboard?.writeText(code)
+        toast(`Código ${code} criado e copiado`)
+        return carregar()
+      }
+    }
+    toast('Não foi possível gerar o código agora', 'info')
+  }
+
+  const status = (x: (typeof lista)[number]) => (x.usado_em ? 'usado' : new Date(x.expira_em) < new Date() ? 'expirado' : 'pendente')
+
   return (
     <>
-      <Cabecalho titulo="Convites" sub="Códigos de convite expiram em 7 dias">
-        <button
-          className="btn btn--primario"
-          onClick={() => {
-            const codigo = `ANA-${Math.floor(1000 + Math.random() * 9000)}`
-            setLista((l) => [{ codigo, para: 'Link copiado', criado: new Date().toISOString(), status: 'pendente' }, ...l])
-            navigator.clipboard?.writeText(codigo)
-            toast(`Código ${codigo} criado e copiado`)
-          }}
-        >
-          + Gerar novo código
-        </button>
+      <Cabecalho titulo="Convites" sub="Códigos avulsos expiram em 7 dias e valem para um paciente">
+        <button className="btn btn--primario" onClick={novo}>+ Gerar código avulso</button>
       </Cabecalho>
       <div className="p-card">
         <div className="p-destaque-codigo">
           <div>
             <span className="p-sobre">Seu código permanente</span>
-            <div className="p-codigo-grande">ANA-4821</div>
+            <div className="p-codigo-grande">{prof.codigo_convite}</div>
             <p className="p-cinza">Compartilhe com seus pacientes. Eles autorizam no app, em Perfil → Compartilhar.</p>
           </div>
           <Mascot expressao="piscando" size={90} />
         </div>
       </div>
-      <div className="p-tabela-wrap" style={{ marginTop: 18 }}>
-        <table className="p-tabela">
-          <thead><tr><th>Código</th><th>Enviado para</th><th>Criado em</th><th>Status</th></tr></thead>
-          <tbody>
-            <AnimatePresence initial={false}>
-              {lista.map((c) => (
-                <motion.tr key={c.codigo} initial={{ opacity: 0, backgroundColor: '#e2f6ef' }} animate={{ opacity: 1, backgroundColor: 'rgba(0,0,0,0)' }} transition={{ duration: 1.2 }}>
-                  <td><b className="p-mono">{c.codigo}</b></td>
-                  <td>{c.para}</td>
-                  <td className="p-cinza">{dataBR(c.criado)}</td>
-                  <td><span className={`selo ${c.status === 'pendente' ? 'selo--lilas' : 'selo--alerta'}`}>{c.status}</span></td>
-                </motion.tr>
-              ))}
-            </AnimatePresence>
-          </tbody>
-        </table>
-      </div>
+      {lista.length > 0 && (
+        <div className="p-tabela-wrap" style={{ marginTop: 18 }}>
+          <table className="p-tabela">
+            <thead><tr><th>Código</th><th>Criado em</th><th>Expira em</th><th>Status</th></tr></thead>
+            <tbody>
+              <AnimatePresence initial={false}>
+                {lista.map((x) => (
+                  <motion.tr key={x.code} initial={{ opacity: 0, backgroundColor: '#e2f6ef' }} animate={{ opacity: 1, backgroundColor: 'rgba(0,0,0,0)' }} transition={{ duration: 1.2 }}>
+                    <td><b className="p-mono">{x.code}</b></td>
+                    <td className="p-cinza">{dataBR(x.created_at)}</td>
+                    <td className="p-cinza">{dataBR(x.expira_em)}</td>
+                    <td><span className={`selo ${status(x) === 'pendente' ? 'selo--lilas' : status(x) === 'usado' ? 'selo--sucesso' : 'selo--alerta'}`}>{status(x)}</span></td>
+                  </motion.tr>
+                ))}
+              </AnimatePresence>
+            </tbody>
+          </table>
+        </div>
+      )}
     </>
   )
 }
@@ -336,16 +459,21 @@ function Relatorios({ lista }: { lista: Relatorio[] }) {
   )
 }
 
-function Conta() {
+function Conta({ prof, email }: { prof: Profissional; email: string }) {
   return (
     <>
       <Cabecalho titulo="Minha conta" />
       <div className="p-grade-2">
         <div className="p-card">
           <span className="p-sobre">Perfil profissional</span>
-          <h2 style={{ marginTop: 6 }}>Dra. Ana Souza</h2>
-          <p className="p-cinza">Nutricionista · CRN-3 48213 · SP</p>
-          <span className="selo selo--sucesso" style={{ marginTop: 12 }}><Icon name="check" size={14} /> Registro verificado</span>
+          <h2 style={{ marginTop: 6 }}>{prof.nome}</h2>
+          <p className="p-cinza">{prof.profissao} · {prof.registro_conselho}{prof.uf ? ` · ${prof.uf}` : ''}</p>
+          <p className="p-cinza">{email}</p>
+          {prof.verificado ? (
+            <span className="selo selo--sucesso" style={{ marginTop: 12 }}><Icon name="check" size={14} /> Registro verificado</span>
+          ) : (
+            <span className="selo selo--lilas" style={{ marginTop: 12 }}>Registro em verificação pela equipe Canetolino</span>
+          )}
         </div>
         <div className="p-card">
           <span className="p-sobre">Segurança</span>

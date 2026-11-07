@@ -21,6 +21,8 @@ import {
   useStore,
   type Local,
 } from '../data/store'
+import { PLANOS, precoBR, type Plano } from '../data/planos'
+import { erroPt, sb } from '../lib/supabase'
 import { dataBR, dataCurta, dataDiaMes, dataHoraBR, DIA_MS, diasEntre, DIAS_LONGOS, inicioDoDia, mesAno, num, saudacaoData, uid } from '../lib/datas'
 
 const cartaoAnim = {
@@ -353,7 +355,9 @@ const Indicador = ({ i, rotulo, valor }: { i: number; rotulo: string; valor: str
 
 /* ======================= 9. Perfil ======================= */
 export function Perfil() {
-  const { s, set, zerar, sair } = useStore()
+  const { s, set, sair, revogar: revogarAcesso, excluirConta } = useStore()
+  const [ocupado, setOcupado] = useState(false)
+  const [erroModal, setErroModal] = useState('')
   const nav = useNavigate()
   const toast = useToast()
   const [revogar, setRevogar] = useState<string | null>(null)
@@ -393,9 +397,9 @@ export function Perfil() {
         <span className="avatar">{iniciais}</span>
         <div style={{ flex: 1 }}>
           <b style={{ fontSize: 17 }}>{s.perfil.nome}</b>
-          <p className="legenda">{s.perfil.plano === 'premium' ? 'Plano Premium' : 'Plano gratuito'}</p>
+          <p className="legenda">Plano {PLANOS[s.perfil.plano].nome} · {precoBR(PLANOS[s.perfil.plano].preco)}/mês</p>
         </div>
-        {s.perfil.plano === 'gratuito' && (
+        {s.perfil.plano === 'basico' && (
           <button className="link-violeta" onClick={() => setPremium(true)}>Ver Premium</button>
         )}
       </Cartao>
@@ -451,7 +455,7 @@ export function Perfil() {
         </AnimatePresence>
         <button onClick={exportar}>Exportar meus dados</button>
         <button onClick={() => setAjuda(true)}>Ajuda e termos</button>
-        <button onClick={() => { sair(); nav('/app/boas-vindas') }}>Sair</button>
+        <button onClick={async () => { await sair(); nav('/app/boas-vindas') }}>Sair</button>
         <button className="texto-alerta" onClick={() => setExcluir(true)}>Excluir minha conta</button>
       </Cartao>
 
@@ -464,17 +468,22 @@ export function Perfil() {
           <button className="btn btn--contorno" onClick={() => setRevogar(null)}>Cancelar</button>
           <button
             className="btn btn--perigo-cheio"
-            onClick={() => {
-              set((x) => ({
-                ...x,
-                compartilhamentos: x.compartilhamentos.map((c) => (c.id === revogar ? { ...c, revogado_em: new Date().toISOString() } : c)),
-                auditoria: [...x.auditoria, { id: uid(), ator: 'Você', acao: `Revogou o acesso de ${alvo?.nome}`, em: new Date().toISOString() }],
-              }))
-              toast('Acesso revogado')
-              setRevogar(null)
+            disabled={ocupado}
+            onClick={async () => {
+              if (!revogar) return
+              setOcupado(true)
+              try {
+                await revogarAcesso(revogar)
+                toast('Acesso revogado')
+                setRevogar(null)
+              } catch (e) {
+                toast(erroPt(e), 'info')
+              } finally {
+                setOcupado(false)
+              }
             }}
           >
-            Revogar
+            {ocupado ? 'Revogando…' : 'Revogar'}
           </button>
         </div>
       </Modal>
@@ -483,19 +492,31 @@ export function Perfil() {
         <div style={{ display: 'flex', justifyContent: 'center' }}><Mascot expressao="alerta" size={80} /></div>
         <h3 style={{ textAlign: 'center' }}>Excluir minha conta</h3>
         <p className="legenda" style={{ fontSize: 14.5 }}>
-          Todos os seus registros serão apagados em até 15 dias. Profissionais perdem o acesso imediatamente. Para confirmar, digite <b>EXCLUIR</b> e sua senha.
+          Todos os seus registros serão apagados. Profissionais perdem o acesso imediatamente. Para confirmar, digite <b>EXCLUIR</b> e sua senha.
         </p>
         <input className="campo" style={{ marginTop: 14 }} placeholder="EXCLUIR" value={confirmTxt} onChange={(e) => setConfirmTxt(e.target.value)} aria-label="Digite EXCLUIR" />
         <input className="campo" style={{ marginTop: 10 }} type="password" placeholder="Sua senha" value={senha} onChange={(e) => setSenha(e.target.value)} aria-label="Senha" />
+        {erroModal && <p className="erro-campo">{erroModal}</p>}
         <div className="duas-col" style={{ marginTop: 18 }}>
           <button className="btn btn--contorno" onClick={() => setExcluir(false)}>Cancelar</button>
           <button
             className="btn btn--perigo-cheio"
-            disabled={confirmTxt !== 'EXCLUIR' || senha.length < 4}
-            onClick={() => {
-              zerar()
-              nav('/app/boas-vindas')
-              toast('Conta excluída', 'info')
+            disabled={confirmTxt !== 'EXCLUIR' || senha.length < 6 || ocupado}
+            onClick={async () => {
+              setOcupado(true)
+              setErroModal('')
+              try {
+                // nova autenticação antes de excluir (seção 8)
+                const { error } = await sb('app').auth.signInWithPassword({ email: s.perfil.email, password: senha })
+                if (error) throw error
+                await excluirConta()
+                nav('/app/boas-vindas')
+                toast('Conta e dados excluídos', 'info')
+              } catch (e) {
+                setErroModal(erroPt(e))
+              } finally {
+                setOcupado(false)
+              }
             }}
           >
             Excluir
@@ -503,27 +524,26 @@ export function Perfil() {
         </div>
       </Modal>
 
-      <Modal aberto={premium} onFechar={() => setPremium(false)}>
-        <div style={{ display: 'flex', justifyContent: 'center' }}><Mascot expressao="comemorando" size={90} /></div>
-        <h3 style={{ textAlign: 'center' }}>Canetolino Premium</h3>
-        <ul className="lista-premium">
-          <li><Icon name="check" size={18} /> Registros por IA ilimitados</li>
-          <li><Icon name="check" size={18} /> Relatórios em PDF para o seu médico</li>
-          <li><Icon name="check" size={18} /> Módulos Manutenção, Fitness e Wellness</li>
-          <li><Icon name="check" size={18} /> Integração com Apple Saúde e Health Connect</li>
-        </ul>
-        <button
-          className="btn btn--turquesa btn--bloco"
-          onClick={(e) => {
-            set((x) => ({ ...x, perfil: { ...x.perfil, plano: 'premium' } }))
-            soltarConfete({ x: e.clientX, y: e.clientY })
-            toast('Premium ativado (simulação da loja)')
-            setPremium(false)
-          }}
-        >
-          Assinar pela loja · R$ 19,90/mês
+      <Modal aberto={premium} onFechar={() => setPremium(false)} largura={520}>
+        <div style={{ display: 'flex', justifyContent: 'center' }}><Mascot expressao="comemorando" size={80} /></div>
+        <h3 style={{ textAlign: 'center' }}>Planos Canetolino</h3>
+        <div className="planos">
+          {(Object.keys(PLANOS) as Plano[]).map((k) => (
+            <div key={k} className={`plano ${k === 'premium' ? 'plano--destaque' : ''} ${s.perfil.plano === k ? 'is-atual' : ''}`}>
+              <b>{PLANOS[k].nome}</b>
+              <div className="plano__preco">{precoBR(PLANOS[k].preco)}<small>/mês</small></div>
+              <small className="legenda">ou {precoBR(PLANOS[k].anual)}/ano</small>
+              <ul className="lista-premium">
+                {PLANOS[k].itens.map((t) => <li key={t}><Icon name="check" size={16} /> {t}</li>)}
+              </ul>
+              {s.perfil.plano === k && <span className="selo selo--lilas">seu plano</span>}
+            </div>
+          ))}
+        </div>
+        <button className="btn btn--turquesa btn--bloco" disabled>
+          Assinatura pela App Store e Google Play em breve
         </button>
-        <p className="legenda" style={{ textAlign: 'center', marginTop: 8 }}>Cobrança pela App Store ou Google Play. Cancele quando quiser.</p>
+        <p className="legenda" style={{ textAlign: 'center', marginTop: 8 }}>A troca de plano é feita pela loja do seu celular, no app nativo.</p>
       </Modal>
 
       <Modal aberto={ajuda} onFechar={() => setAjuda(false)}>

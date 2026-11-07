@@ -131,3 +131,15 @@
   .modal-fundo { background: none; backdrop-filter: none; }
   .nao-imprimir { display: none !important; }
 }
+
+.p-login__site { color: #cbb9f5; font-size: 14px; text-decoration: none; position: relative; }
+.p-login__site:hover { color: #fff; }
+.p-login__caixa { width: min(100%, 420px); }
+.p-abas { display: grid; grid-template-columns: 1fr 1fr; background: var(--lilas); border-radius: 14px; padding: 4px; margin-bottom: 8px; }
+.p-abas button { border: 0; background: none; padding: 10px; border-radius: 11px; font-weight: 700; color: var(--texto-2); cursor: pointer; }
+.p-abas button.is-on { background: #fff; color: var(--roxo); box-shadow: var(--sombra); }
+.p-qr { display: grid; justify-items: center; gap: 8px; margin: 14px 0 4px; background: #fff; border: 1px solid var(--borda); border-radius: 18px; padding: 14px; }
+.p-qr small { color: var(--texto-2); font-size: 12px; text-align: center; word-break: break-all; }
+.p-qr code { font-size: 12px; color: var(--roxo); }
+.p-carregando { display: grid; place-items: center; min-height: 60vh; }
+.p-form-card { max-width: 560px; }

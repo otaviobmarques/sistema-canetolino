@@ -6,6 +6,7 @@ import Mascot from '../components/Mascot'
 import { Interruptor, Logo, soltarConfete, useToast } from '../components/ui'
 import { PRINCIPIOS, useStore } from '../data/store'
 import { DIAS_CURTOS, uid } from '../lib/datas'
+import { erroPt } from '../lib/supabase'
 
 const stagger = {
   hidden: {},
@@ -16,7 +17,7 @@ const sobe = { hidden: { opacity: 0, y: 18 }, show: { opacity: 1, y: 0, transiti
 /* ======================= 1. Boas-vindas ======================= */
 export function Boasvindas() {
   const { s } = useStore()
-  if (s.sessao && s.onboardingFeito) return <Navigate to="/app/home" replace />
+  if (s.userId) return <Navigate to={s.onboardingFeito ? '/app/home' : '/app/onboarding/1'} replace />
   return (
     <div className="tela tela--roxa boas-vindas">
       <div className="bv-bolhas" aria-hidden>
@@ -35,7 +36,7 @@ export function Boasvindas() {
           Eu sou o Dose. Vou te ajudar a acompanhar aplicações, proteína, água e evolução, sem complicação.
         </motion.p>
         <motion.div variants={sobe} className="bv-botoes">
-          <Link to="/app/onboarding/1" className="btn btn--turquesa btn--bloco">
+          <Link to="/app/cadastro" className="btn btn--turquesa btn--bloco">
             Criar minha conta
           </Link>
           <Link to="/app/login" className="btn btn--fantasma btn--bloco">
@@ -52,51 +53,177 @@ export function Boasvindas() {
 
 /* ======================= Login ======================= */
 export function Login() {
-  const { entrarDemo } = useStore()
+  const { entrar, recuperarSenha } = useStore()
   const nav = useNavigate()
   const toast = useToast()
-  const [email, setEmail] = useState('jessica@exemplo.com')
-  const [senha, setSenha] = useState('demo1234')
+  const [email, setEmail] = useState('')
+  const [senha, setSenha] = useState('')
   const [carregando, setCarregando] = useState(false)
+  const [erro, setErro] = useState('')
   return (
     <div className="tela">
       <div className="topo">
-        <button className="btn-icone" onClick={() => nav(-1)} aria-label="Voltar">
+        <button className="btn-icone" onClick={() => nav('/app/boas-vindas')} aria-label="Voltar">
           <Icon name="back" />
         </button>
       </div>
       <motion.div variants={stagger} initial="hidden" animate="show">
         <motion.div variants={sobe} style={{ display: 'flex', justifyContent: 'center', margin: '8px 0 4px' }}>
-          <Mascot expressao="feliz" size={96} />
+          <Mascot expressao={erro ? 'alerta' : 'feliz'} size={96} />
         </motion.div>
         <motion.h1 variants={sobe} className="titulo-tela" style={{ textAlign: 'center' }}>
           Que bom te ver de novo!
         </motion.h1>
         <motion.form
           variants={sobe}
-          onSubmit={(e) => {
+          onSubmit={async (e) => {
             e.preventDefault()
             setCarregando(true)
-            setTimeout(() => {
-              entrarDemo()
-              toast('Bem-vinda de volta, Jessica!')
-              nav('/app/home')
-            }, 700)
+            setErro('')
+            try {
+              await entrar(email, senha)
+              nav('/app')
+            } catch (er) {
+              setErro(erroPt(er))
+            } finally {
+              setCarregando(false)
+            }
           }}
         >
           <label className="rotulo" htmlFor="email">E-mail</label>
-          <input id="email" className="campo" type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" />
+          <input id="email" className="campo" type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" required />
           <label className="rotulo" htmlFor="senha">Senha</label>
-          <input id="senha" className="campo" type="password" value={senha} onChange={(e) => setSenha(e.target.value)} autoComplete="current-password" />
-          <p className="legenda" style={{ marginTop: 8 }}>Protótipo: qualquer e-mail entra na conta de demonstração.</p>
+          <input id="senha" className="campo" type="password" value={senha} onChange={(e) => setSenha(e.target.value)} autoComplete="current-password" required />
+          {erro && <p className="erro-campo" role="alert">{erro}</p>}
           <button className="btn btn--primario btn--bloco" style={{ marginTop: 22 }} disabled={carregando || !email || !senha}>
             {carregando ? 'Entrando…' : 'Entrar'}
           </button>
-          <button type="button" className="btn btn--contorno btn--bloco" style={{ marginTop: 10 }} onClick={() => toast('Link de recuperação enviado (simulação)', 'info')}>
+          <button
+            type="button"
+            className="btn btn--contorno btn--bloco"
+            style={{ marginTop: 10 }}
+            onClick={async () => {
+              if (!email.includes('@')) return setErro('Digite seu e-mail acima para receber o link.')
+              try {
+                await recuperarSenha(email)
+                toast('Enviamos um link para criar uma nova senha', 'info')
+              } catch (er) {
+                setErro(erroPt(er))
+              }
+            }}
+          >
             Esqueci minha senha
           </button>
+          <p className="legenda" style={{ textAlign: 'center', marginTop: 16 }}>
+            Ainda não tem conta? <Link to="/app/cadastro" style={{ color: 'var(--violeta)', fontWeight: 700 }}>Criar conta</Link>
+          </p>
         </motion.form>
       </motion.div>
+    </div>
+  )
+}
+
+/* ======================= Cadastro ======================= */
+export function Cadastro() {
+  const { criarConta } = useStore()
+  const nav = useNavigate()
+  const [nome, setNome] = useState('')
+  const [email, setEmail] = useState('')
+  const [senha, setSenha] = useState('')
+  const [termos, setTermos] = useState(false)
+  const [carregando, setCarregando] = useState(false)
+  const [erro, setErro] = useState('')
+  const [confirmar, setConfirmar] = useState(false)
+
+  if (confirmar)
+    return (
+      <div className="tela" style={{ justifyContent: 'center', textAlign: 'center', alignItems: 'center', gap: 10 }}>
+        <Mascot expressao="piscando" size={120} />
+        <h1 className="titulo-tela">Confira seu e-mail</h1>
+        <p className="sub-tela">Enviamos um link de confirmação para <b>{email}</b>. Toque nele e depois entre com sua senha para continuar o cadastro.</p>
+        <Link to="/app/login" className="btn btn--primario btn--bloco" style={{ marginTop: 20 }}>Já confirmei, entrar</Link>
+      </div>
+    )
+
+  return (
+    <div className="tela">
+      <div className="topo">
+        <button className="btn-icone" onClick={() => nav('/app/boas-vindas')} aria-label="Voltar">
+          <Icon name="back" />
+        </button>
+        <h1 className="titulo-tela" style={{ fontSize: 26 }}>Criar minha conta</h1>
+      </div>
+      <p className="sub-tela" style={{ marginTop: 0 }}>Seus registros ficam guardados com segurança e você acessa de qualquer aparelho.</p>
+      <form
+        style={{ display: 'flex', flexDirection: 'column', flex: 1 }}
+        onSubmit={async (e) => {
+          e.preventDefault()
+          setCarregando(true)
+          setErro('')
+          try {
+            const r = await criarConta(email, senha, nome.trim())
+            if (r === 'ok') nav('/app/onboarding/1')
+            else setConfirmar(true)
+          } catch (er) {
+            setErro(erroPt(er))
+          } finally {
+            setCarregando(false)
+          }
+        }}
+      >
+        <label className="rotulo" htmlFor="cnome">Seu nome</label>
+        <input id="cnome" className="campo" placeholder="Como quer ser chamada(o)" value={nome} onChange={(e) => setNome(e.target.value)} autoComplete="given-name" required />
+        <label className="rotulo" htmlFor="cemail">E-mail</label>
+        <input id="cemail" className="campo" type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" required />
+        <label className="rotulo" htmlFor="csenha">Senha</label>
+        <input id="csenha" className="campo" type="password" placeholder="Pelo menos 8 caracteres" value={senha} onChange={(e) => setSenha(e.target.value)} autoComplete="new-password" required />
+        <label className="check" style={{ marginTop: 18 }}>
+          <input type="checkbox" checked={termos} onChange={(e) => setTermos(e.target.checked)} />
+          <span className="legenda" style={{ fontSize: 14 }}>
+            Li e aceito os termos de uso e a política de privacidade. Consinto o uso dos meus dados de saúde para as funções do app (LGPD).
+          </span>
+        </label>
+        {erro && <p className="erro-campo" role="alert">{erro}</p>}
+        <div className="rodape-acao">
+          <button className="btn btn--turquesa btn--bloco" disabled={carregando || nome.trim().length < 2 || !email.includes('@') || senha.length < 8 || !termos}>
+            {carregando ? 'Criando…' : 'Criar conta'}
+          </button>
+        </div>
+      </form>
+    </div>
+  )
+}
+
+/* ======================= Nova senha (link do e-mail) ======================= */
+export function NovaSenha() {
+  const { novaSenha } = useStore()
+  const nav = useNavigate()
+  const toast = useToast()
+  const [senha, setSenha] = useState('')
+  const [erro, setErro] = useState('')
+  return (
+    <div className="tela">
+      <h1 className="titulo-tela" style={{ marginTop: 20 }}>Crie uma nova senha</h1>
+      <label className="rotulo" htmlFor="ns">Nova senha</label>
+      <input id="ns" className="campo" type="password" value={senha} onChange={(e) => setSenha(e.target.value)} autoComplete="new-password" />
+      {erro && <p className="erro-campo">{erro}</p>}
+      <div className="rodape-acao">
+        <button
+          className="btn btn--primario btn--bloco"
+          disabled={senha.length < 8}
+          onClick={async () => {
+            try {
+              await novaSenha(senha)
+              toast('Senha atualizada')
+              nav('/app')
+            } catch (er) {
+              setErro(erroPt(er))
+            }
+          }}
+        >
+          Salvar nova senha
+        </button>
+      </div>
     </div>
   )
 }
@@ -111,7 +238,7 @@ export function Onboarding() {
   const { s, set } = useStore()
   const toast = useToast()
 
-  // rascunho local, gravado ao concluir
+  // rascunho do onboarding, gravado na nuvem ao concluir
   const [d, setD] = useState(() => ({
     nome: s.perfil.nome,
     nascimento: s.perfil.nascimento,
@@ -140,13 +267,12 @@ export function Onboarding() {
     !!d.principio && d.dia >= 0,
     Number(d.meta_proteina) > 0 && Number(d.meta_agua.replace(',', '.')) > 0,
     true,
-    d.termos,
+    true,
   ][p - 1]
 
   const concluir = (e: React.MouseEvent) => {
     set((x) => ({
       ...x,
-      sessao: true,
       onboardingFeito: true,
       perfil: {
         ...x.perfil,
@@ -159,7 +285,7 @@ export function Onboarding() {
         meta_agua_ml: Math.round(Number(d.meta_agua.replace(',', '.')) * 1000),
         preferencias: d.preferencias,
       },
-      medicamento: { principio: d.principio, nome_comercial: d.nome_comercial, dia_semana: d.dia, horario: d.horario, dose_texto: d.dose || 'conforme sua prescrição' },
+      medicamento: { id: x.medicamento?.id ?? uid(), principio: d.principio, nome_comercial: d.nome_comercial, dia_semana: d.dia, horario: d.horario, dose_texto: d.dose || 'conforme sua prescrição' },
       pesos: [{ id: uid(), kg: Number(d.peso.replace(',', '.')), em: new Date().toISOString() }],
       config: { ...x.config, notificacoesDiscretas: d.discretas, lembretesAgua: d.lembreteAgua, lembreteHora: d.horario },
       consentimentos: [
@@ -172,10 +298,12 @@ export function Onboarding() {
     nav('/app/home')
   }
 
+  if (!s.userId) return <Navigate to="/app/boas-vindas" replace />
+
   return (
     <div className="tela onboarding">
       <div className="topo">
-        <button className="btn-icone" onClick={() => (p === 1 ? nav('/app/boas-vindas') : nav(`/app/onboarding/${p - 1}`))} aria-label="Voltar">
+        <button className="btn-icone" style={{ visibility: p === 1 ? 'hidden' : 'visible' }} onClick={() => nav(`/app/onboarding/${p - 1}`)} aria-label="Voltar">
           <Icon name="back" />
         </button>
         <div className="progresso" aria-label={`Passo ${p} de ${TOTAL}`}>
@@ -316,12 +444,9 @@ export function Onboarding() {
               <Interruptor ligado={d.lembreteAgua} onChange={(v) => up('lembreteAgua', v)} rotulo="Lembretes de água" />
             </div>
           </div>
-          <label className="check" style={{ marginTop: 18 }}>
-            <input type="checkbox" checked={d.termos} onChange={(e) => up('termos', e.target.checked)} />
-            <span className="legenda" style={{ fontSize: 14 }}>
-              Li e aceito os termos de uso e a política de privacidade. Consinto o uso dos meus dados de saúde para as funções do app (LGPD).
-            </span>
-          </label>
+          <div className="aviso" style={{ marginTop: 16 }}>
+            <span>Você pode mudar isso quando quiser em Perfil → Privacidade.</span>
+          </div>
         </>
       )}
 

@@ -1,10 +1,10 @@
 import { AnimatePresence, motion } from 'framer-motion'
-import { Link, NavLink, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
+import { Link, NavLink, Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import Icon from '../components/Icon'
 import Mascot from '../components/Mascot'
-import { Logo, useToast } from '../components/ui'
+import { Logo } from '../components/ui'
 import { useStore } from '../data/store'
-import { Boasvindas, Login, Onboarding } from './Entrada'
+import { Boasvindas, Cadastro, Login, NovaSenha, Onboarding } from './Entrada'
 import { Home, Jornada, Perfil, Radar } from './Principal'
 import { Peso, Refeicao, Registrar, SintomaTela, Treino } from './Registros'
 import Compartilhar from './Compartilhar'
@@ -14,12 +14,10 @@ const COM_NAV = ['/app/home', '/app/jornada', '/app/radar', '/app/perfil']
 
 export default function AppShell() {
   const loc = useLocation()
-  const { s, entrarDemo, zerar } = useStore()
-  const nav = useNavigate()
-  const toast = useToast()
+  const { s, sync } = useStore()
   const mostrarNav = COM_NAV.includes(loc.pathname)
 
-  const destinoInicial = !s.sessao ? '/app/boas-vindas' : !s.onboardingFeito ? '/app/onboarding/1' : '/app/home'
+  const destinoInicial = !s.userId ? '/app/boas-vindas' : !s.onboardingFeito ? '/app/onboarding/1' : '/app/home'
 
   return (
     <div className="app-palco">
@@ -29,29 +27,22 @@ export default function AppShell() {
         </Link>
         <Logo tamanho={30} />
         <p className="app-lateral__txt">
-          Este é o <b>app do paciente</b> funcionando no navegador. Tudo que você registrar aqui fica salvo neste aparelho e aparece no painel do profissional.
+          Este é o <b>app do paciente</b>. Os registros ficam na sua conta, na nuvem, e aparecem para os profissionais que você autorizar.
         </p>
-        <div className="app-lateral__acoes">
-          <button
-            className="btn btn--primario btn--bloco"
-            onClick={() => {
-              entrarDemo()
-              nav('/app/home')
-              toast('Conta de demonstração carregada')
-            }}
-          >
-            Carregar demo (Jessica)
-          </button>
-          <button
-            className="btn btn--contorno btn--bloco"
-            onClick={() => {
-              zerar()
-              nav('/app/boas-vindas')
-            }}
-          >
-            Começar do zero
-          </button>
-        </div>
+        {s.userId ? (
+          <div className={`app-lateral__sync ${sync.erro ? 'is-erro' : ''}`} role="status">
+            <span className="app-lateral__ponto" />
+            <div>
+              <b>{sync.erro ? 'Sem conexão' : sync.pendente ? 'Salvando…' : 'Tudo salvo na nuvem'}</b>
+              <small>{sync.erro ? 'Seus registros sobem assim que a internet voltar.' : s.perfil.email}</small>
+            </div>
+          </div>
+        ) : (
+          <div className="app-lateral__acoes">
+            <Link to="/app/cadastro" className="btn btn--primario btn--bloco">Criar conta</Link>
+            <Link to="/app/login" className="btn btn--contorno btn--bloco">Entrar</Link>
+          </div>
+        )}
         <div className="app-lateral__links">
           <Link to="/pro">
             <Icon name="users" size={18} /> Abrir Canetolino Pro
@@ -62,7 +53,7 @@ export default function AppShell() {
         </div>
         <div className="app-lateral__dose">
           <Mascot expressao="piscando" size={70} />
-          <p>Dica: abra o Pro em outra aba e revogue o acesso no Perfil. A paciente some da lista na hora.</p>
+          <p>Para o seu nutricionista acompanhar, peça o código dele e autorize em Perfil → Compartilhar. Você revoga quando quiser.</p>
         </div>
       </aside>
 
@@ -82,6 +73,8 @@ export default function AppShell() {
                 <Route index element={<Navigate to={destinoInicial} replace />} />
                 <Route path="boas-vindas" element={<Boasvindas />} />
                 <Route path="login" element={<Login />} />
+                <Route path="cadastro" element={<Cadastro />} />
+                <Route path="nova-senha" element={<NovaSenha />} />
                 <Route path="onboarding/:passo" element={<Onboarding />} />
                 <Route path="home" element={<Protegida><Home /></Protegida>} />
                 <Route path="jornada" element={<Protegida><Jornada /></Protegida>} />
@@ -106,7 +99,7 @@ export default function AppShell() {
 
 function Protegida({ children }: { children: React.ReactNode }) {
   const { s } = useStore()
-  if (!s.sessao) return <Navigate to="/app/boas-vindas" replace />
+  if (!s.userId) return <Navigate to="/app/boas-vindas" replace />
   if (!s.onboardingFeito) return <Navigate to="/app/onboarding/1" replace />
   return <>{children}</>
 }

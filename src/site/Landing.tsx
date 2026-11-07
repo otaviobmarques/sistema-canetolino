@@ -5,6 +5,7 @@ import Icon, { type IconName } from '../components/Icon'
 import Mascot, { type Expressao } from '../components/Mascot'
 import { Contador, Logo, soltarConfete } from '../components/ui'
 import { MiniCompartilhar, MiniFoto, MiniInicio, MiniJornada, MiniRadar } from './MiniTelas'
+import { PLANOS, precoBR } from '../data/planos'
 import '../styles/landing.css'
 
 const EASE = [0.22, 1, 0.36, 1] as const
@@ -607,7 +608,7 @@ function Faq() {
     ['Como a IA calcula a proteína da foto?', 'A IA só identifica os alimentos e estima as porções. Os nutrientes vêm sempre da tabela TACO/TBCA, e nada é salvo antes de você conferir e confirmar.'],
     ['Meu nutricionista vê tudo?', 'Só o que você escolher: peso, alimentação, aplicações, sintomas ou bem-estar, por 30 dias, 90 dias ou até você revogar. Revogar corta o acesso na hora.'],
     ['Funciona sem internet?', 'Sim. Água, peso, aplicação e sintomas funcionam offline e sincronizam depois. O alerta de sintoma grave aparece mesmo sem conexão.'],
-    ['Quanto custa?', 'O plano gratuito cobre o essencial, com uma cota mensal de registros por IA. O Premium libera IA ilimitada, relatórios em PDF e módulos extras.'],
+    ['Quanto custa?', `O Básico custa ${precoBR(PLANOS.basico.preco)} por mês e cobre o essencial, com ${PLANOS.basico.itens[2].split(' ')[0]} registros de refeição por IA. O Premium, ${precoBR(PLANOS.premium.preco)} por mês, libera IA ilimitada, relatórios em PDF, mais profissionais e módulos extras. No plano anual você paga menos.`],
   ]
   const [aberta, setAberta] = useState<number | null>(0)
   return (

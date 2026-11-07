@@ -68,61 +68,6 @@ export function Cabecalho({ titulo, sub, children }: { titulo: string; sub?: str
   )
 }
 
-/** Login dos painéis web: e-mail, senha e segundo fator (obrigatório nos painéis). */
-export function LoginPainel({ sufixo, emailPadrao, onEntrar, descricao }: { sufixo: string; emailPadrao: string; onEntrar: () => void; descricao: string }) {
-  const [etapa, setEtapa] = useState<1 | 2>(1)
-  const [codigo, setCodigo] = useState('')
-  const [carregando, setCarregando] = useState(false)
-  return (
-    <div className="p-login">
-      <div className="p-login__arte">
-        <div className="p-login__bolha" />
-        <Mascot expressao={etapa === 1 ? 'acenando' : 'piscando'} size={200} seguirCursor />
-        <Logo claro sufixo={sufixo} tamanho={34} />
-        <p>{descricao}</p>
-      </div>
-      <div className="p-login__form">
-        <AnimatePresence mode="wait">
-          {etapa === 1 ? (
-            <motion.form key="1" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} onSubmit={(e) => { e.preventDefault(); setEtapa(2) }}>
-              <h2>Entrar</h2>
-              <p className="legenda">Acesso para profissionais verificados.</p>
-              <label className="rotulo" htmlFor="pe">E-mail</label>
-              <input id="pe" className="campo" defaultValue={emailPadrao} type="email" />
-              <label className="rotulo" htmlFor="ps">Senha</label>
-              <input id="ps" className="campo" defaultValue="demo1234" type="password" />
-              <button className="btn btn--primario btn--bloco" style={{ marginTop: 22 }}>Continuar</button>
-            </motion.form>
-          ) : (
-            <motion.form
-              key="2"
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0 }}
-              onSubmit={(e) => {
-                e.preventDefault()
-                setCarregando(true)
-                setTimeout(onEntrar, 600)
-              }}
-            >
-              <h2>Verificação em duas etapas</h2>
-              <p className="legenda">Digite o código de 6 dígitos do seu app autenticador. (Protótipo: qualquer código.)</p>
-              <div className="p-otp">
-                {Array.from({ length: 6 }, (_, i) => (
-                  <span key={i} className={codigo.length === i ? 'is-ativo' : ''}>{codigo[i] ?? ''}</span>
-                ))}
-                <input className="p-otp__input" inputMode="numeric" autoFocus maxLength={6} value={codigo} onChange={(e) => setCodigo(e.target.value.replace(/\D/g, ''))} aria-label="Código de verificação" />
-              </div>
-              <button className="btn btn--primario btn--bloco" style={{ marginTop: 22 }} disabled={codigo.length < 6 || carregando}>{carregando ? 'Entrando…' : 'Entrar no painel'}</button>
-              <button type="button" className="btn btn--contorno btn--bloco" style={{ marginTop: 10 }} onClick={() => setCodigo('482913')}>Preencher código de teste</button>
-            </motion.form>
-          )}
-        </AnimatePresence>
-      </div>
-    </div>
-  )
-}
-
 export function Bloqueado({ texto }: { texto: string }) {
   return (
     <div className="p-bloqueado">
@@ -133,21 +78,3 @@ export function Bloqueado({ texto }: { texto: string }) {
   )
 }
 
-export function usarSessao(chave: string) {
-  const [ok, setOk] = useState(() => {
-    try {
-      return sessionStorage.getItem(chave) === '1'
-    } catch {
-      return false
-    }
-  })
-  const entrar = () => {
-    try { sessionStorage.setItem(chave, '1') } catch { /* */ }
-    setOk(true)
-  }
-  const sair = () => {
-    try { sessionStorage.removeItem(chave) } catch { /* */ }
-    setOk(false)
-  }
-  return { ok, entrar, sair }
-}

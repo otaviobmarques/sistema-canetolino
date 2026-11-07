@@ -22,12 +22,32 @@ Build de produção: `npm run build` (sai em `dist/`).
 
 **No ar:** https://sistema-canetolino.vercel.app (Vercel, ligada a este repositório: cada push na `main` publica sozinho).
 
+## Backend (Supabase)
+
+Projeto **canetolino** na organização Domma Tecnologia, região **sa-east-1 (São Paulo)**. Tudo fica na nuvem: não existe modo local nem conta de demonstração.
+
+- **Contas:** e-mail e senha. Os painéis Pro e Clinic exigem verificação em duas etapas (app autenticador, TOTP).
+- **Banco:** `supabase/migrations/` tem o esquema completo com RLS. A função `pode_ler` libera o dono e, para profissional ou clínica, só os módulos autorizados, dentro do prazo e com sessão em dois fatores.
+- **Funções de servidor (RPC):** `autorizar_compartilhamento`, `revogar_compartilhamento`, `buscar_codigo`, `pacientes_do_profissional`, `registrar_acesso` (auditoria), `clinica_visao`, `clinica_pacientes`, `clinica_equipe`, `aceitar_convites_clinica`, `excluir_minha_conta`.
+- **Sem internet:** o app guarda os registros no aparelho e envia a diferença assim que a conexão volta.
+- **Códigos de convite:** gerados no cadastro a partir do nome (ex.: `ANA-1234` para a Dra. Ana, `VID-5678` para a Clínica Vida); o Pro também gera códigos avulsos de 7 dias.
+
+### Configuração pendente no painel do Supabase
+
+1. **Authentication → URL Configuration:** Site URL `https://sistema-canetolino.vercel.app` e, em Redirect URLs, `https://sistema-canetolino.vercel.app/**` (os links de confirmação e de nova senha voltam para cá).
+2. **Authentication → SMTP:** o envio padrão do Supabase só manda e-mail para membros da organização. Para pacientes e profissionais receberem a confirmação, configure um SMTP próprio (Resend, por exemplo).
+
+## Planos (paciente)
+
+Sem plano gratuito. Valores em `src/data/planos.ts`: **Básico R$ 9,90/mês** (R$ 99/ano) e **Premium R$ 19,90/mês** (R$ 199/ano). A assinatura será feita pelas lojas no app nativo.
+
 ## Como testar o fluxo completo
 
-1. Abra `#/app` e clique em **Carregar demo (Jessica)**, ou crie uma conta do zero pelo onboarding.
-2. Em outra aba, abra `#/pro` (login e 2FA de teste já vêm preenchidos). A Jessica aparece com o selo **ao vivo**.
-3. No app, em **Perfil → Revogar**, a paciente some do Pro na hora. Autorize de novo em **Compartilhar** com o código `ANA-4821`.
-4. Em `#/clinic`, troque o papel em **Ver painel como**: o papel Recepção não abre a ficha de paciente.
+1. Em `#/app`, crie a conta e faça o onboarding.
+2. Em `#/pro`, crie a conta profissional, ative o app autenticador e copie seu código de convite.
+3. No app, em **Perfil → Compartilhar**, use o código. O paciente aparece no Pro, e o acesso fica no **Histórico de acessos** do paciente.
+4. Revogue no app: o paciente some do Pro na próxima atualização (até 20 s).
+5. Em `#/clinic`, cadastre a clínica, convide profissionais pelo e-mail e envie o código da clínica aos pacientes. O papel Recepção não vê dados de paciente.
 
 ## Regras do descritivo técnico implementadas
 
@@ -40,13 +60,11 @@ Build de produção: `npm run build` (sai em `dist/`).
 - Exportar dados (JSON) e excluir a conta pedem confirmação.
 - Tokens de cor, Nunito/Inter, áreas de toque ≥ 44 px, `prefers-reduced-motion` respeitado.
 
-## Estado atual e próximos passos
+## Próximos passos
 
-Este é um **protótipo funcional de front-end**: os dados ficam no `localStorage` do navegador (`src/data/store.tsx`), e as abas abertas se sincronizam entre si. Para produção:
-
-- **Backend:** `supabase/migrations/0001_schema_inicial.sql` tem o modelo de dados da seção 5 com RLS (a função `pode_ler` libera o dono e quem tem permissão ativa por módulo). Falta trocar o store local por chamadas ao Supabase e criar as Edge Functions (`/ai/meal-from-photo`, `/reports/pdf`, `/sharing/*`...).
-- **IA:** ligar o reconhecimento de refeição a um modelo com visão e o resumo semanal ao filtro de texto (sem dose, diagnóstico ou causalidade).
-- **App nativo:** o descritivo recomenda Flutter ou React Native; as telas e regras daqui servem de referência direta.
+- **IA de verdade:** reconhecimento de refeição por foto/voz/texto e resumo semanal do Radar (hoje são regras fixas no app).
+- **Telas que faltam:** busca de alimentos completa, medidas e fotos de evolução, assinatura dos planos.
+- **App nativo** (Flutter ou React Native) para as lojas, com notificações push.
 - Revisão clínica da lista de sintomas de alerta, revisão jurídica (LGPD) e avaliação do enquadramento na Anvisa.
 
-> Os números nas telas (peso, proteína, pacientes, percentuais) são exemplos.
+> Os números nas ilustrações do site são exemplos.

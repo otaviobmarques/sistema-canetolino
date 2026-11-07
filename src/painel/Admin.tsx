@@ -11,9 +11,10 @@ import { AuthPainel, usePainel } from './Auth'
 import { Bloqueado, Cabecalho, PainelLayout } from './Layout'
 import Pagamentos from './Pagamentos'
 import Usuarios from './Usuarios'
+import AdminPaciente from './AdminPaciente'
 
-/* Painel da equipe Canetolino: verificação de profissionais e números gerais.
-   Não mostra dados de saúde de pacientes (LGPD): só contagens. */
+/* Painel da equipe Canetolino: usuários, verificação de profissionais, pagamentos e números gerais.
+   O administrador pode abrir os registros de um paciente (só leitura); cada abertura fica no histórico de acessos do paciente. */
 
 type Resumo = Record<string, number>
 type Prof = { id: string; nome: string; profissao: string; registro: string; uf: string | null; email: string; codigo: string; verificado: boolean; pacientes: number; criado_em: string }
@@ -70,6 +71,7 @@ export default function AdminPainel() {
       <Routes>
         <Route index element={<Visao c={c} />} />
         <Route path="usuarios" element={<Usuarios c={c} />} />
+        <Route path="usuarios/:id" element={<AdminPaciente c={c} />} />
         <Route path="profissionais" element={<Profissionais c={c} />} />
         <Route path="clinicas" element={<Clinicas c={c} />} />
         <Route path="pagamentos" element={<Pagamentos c={c} />} />
@@ -96,7 +98,7 @@ function Visao({ c }: { c: SupabaseClient }) {
     : []
   return (
     <>
-      <Cabecalho titulo="Visão geral" sub="Números da plataforma · sem dados de saúde de pacientes" />
+      <Cabecalho titulo="Visão geral" sub="Números da plataforma" />
       {erro && <div className="p-aviso">{erro}</div>}
       <div className="p-kpis">
         {r === null

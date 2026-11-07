@@ -1,6 +1,7 @@
 import { FunctionsHttpError, type SupabaseClient } from '@supabase/supabase-js'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useCallback, useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import Icon from '../components/Icon'
 import Mascot from '../components/Mascot'
 import { Modal, useToast } from '../components/ui'
@@ -8,8 +9,7 @@ import { dataBR } from '../lib/datas'
 import { erroPt } from '../lib/supabase'
 import { Cabecalho } from './Layout'
 
-/* Painel Admin · usuários: cadastrar com senha, trocar senha, bloquear e excluir.
-   Mostra só dados de conta (nome, e-mail, tipo, datas), nunca dados de saúde. */
+/* Painel Admin · usuários: cadastrar com senha, trocar senha, bloquear, excluir e ver os registros do paciente. */
 
 type Tipo = 'paciente' | 'profissional' | 'clinica' | 'admin'
 type Usuario = { id: string; email: string; nome: string; tipo: Tipo; detalhe: string | null; criado_em: string; ultimo_acesso: string | null; email_confirmado: boolean; bloqueado: boolean; plano: string | null }
@@ -118,6 +118,7 @@ export default function Usuarios({ c }: { c: SupabaseClient }) {
                         : <span className="selo selo--sucesso">ativo</span>}
                     </td>
                     <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                      {u.tipo === 'paciente' && <><Link to={`/admin/usuarios/${u.id}`} className="btn btn--turquesa btn--pequeno">Ver dados</Link>{' '}</>}
                       <button className="btn btn--contorno btn--pequeno" onClick={() => setSenhaDe(u)}>Senha</button>{' '}
                       <button className="btn btn--contorno btn--pequeno" disabled={ocupado === u.id} onClick={() => bloquear(u)}>{u.bloqueado ? 'Desbloquear' : 'Bloquear'}</button>{' '}
                       <button className="btn btn--perigo btn--pequeno" onClick={() => setExcluir(u)}>Excluir</button>
@@ -129,7 +130,7 @@ export default function Usuarios({ c }: { c: SupabaseClient }) {
           </table>
         </div>
       )}
-      <p className="legenda" style={{ marginTop: 14 }}>Quem é bloqueado é desconectado na hora e não consegue mais entrar até ser desbloqueado. Os dados ficam guardados.</p>
+      <p className="legenda" style={{ marginTop: 14 }}>Quem é bloqueado é desconectado na hora e não consegue mais entrar até ser desbloqueado. Os dados ficam guardados. Ao abrir os dados de um paciente, o acesso fica registrado no histórico que ele vê no app.</p>
 
       <NovoUsuario c={c} aberto={novo} onFechar={() => setNovo(false)} onCriado={carregar} />
       <TrocarSenha c={c} usuario={senhaDe} onFechar={() => setSenhaDe(null)} />

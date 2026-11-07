@@ -3,7 +3,9 @@ import { motion } from 'framer-motion'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import GraficoPeso from '../components/GraficoPeso'
+import Icon from '../components/Icon'
 import Mascot from '../components/Mascot'
+import FichaImpressa from './FichaImpressa'
 import { lerSaude } from '../data/nuvem'
 import { calcularImc, LOCAL_LONGO, numerarAplicacoes, TIPOS_MEDIDA, vazio, type Estado } from '../data/store'
 import { dataBR, dataHoraBR, DIAS_LONGOS, num } from '../lib/datas'
@@ -37,6 +39,7 @@ export default function AdminPaciente({ c }: { c: SupabaseClient }) {
   const [extra, setExtra] = useState<{ consent: Linha[]; acessos: Linha[]; assinaturas: Linha[]; rotulos: Linha[] }>({ consent: [], acessos: [], assinaturas: [], rotulos: [] })
   const [erro, setErro] = useState('')
   const registrado = useRef('')
+  const [imprimindo, setImprimindo] = useState(false)
 
   useEffect(() => {
     let vivo = true
@@ -77,6 +80,24 @@ export default function AdminPaciente({ c }: { c: SupabaseClient }) {
     }
   }, [c, id])
 
+  const imprimir = async () => {
+    setImprimindo(true)
+    await c.rpc('admin_registrar_acesso', { p_paciente: id, p_acao: 'Imprimiu a ficha (painel administrativo)' })
+    // espera as fotos da ficha carregarem antes de abrir a impressão
+    await Promise.all([...document.querySelectorAll<HTMLImageElement>('.impressao img')].map((img) => (img.complete ? null : new Promise((ok) => { img.onload = img.onerror = ok }))))
+    const nomeOriginal = document.title
+    document.title = `Ficha ${String(perfil?.nome ?? 'paciente')} - Canetolino`
+    document.body.classList.add('imprimindo')
+    const fim = () => {
+      document.body.classList.remove('imprimindo')
+      document.title = nomeOriginal
+      window.removeEventListener('afterprint', fim)
+    }
+    window.addEventListener('afterprint', fim)
+    setImprimindo(false)
+    setTimeout(() => window.print(), 50)
+  }
+
   if (erro) return <><Link to="/admin/usuarios" className="p-voltar">← Usuários</Link><div className="p-aviso">{erro}</div></>
   if (!s || !perfil) return <div className="p-carregando"><Mascot expressao="pensativo" size={100} /></div>
 
@@ -92,7 +113,12 @@ export default function AdminPaciente({ c }: { c: SupabaseClient }) {
   return (
     <>
       <Link to="/admin/usuarios" className="p-voltar">← Usuários</Link>
-      <Cabecalho titulo={p('nome')} sub={`${p('email')} · plano ${perfil.plano === 'premium' ? 'Premium' : 'Básico'} · este acesso aparece no histórico do paciente`} />
+      <Cabecalho titulo={p('nome')} sub={`${p('email')} · plano ${perfil.plano === 'premium' ? 'Premium' : 'Básico'} · este acesso aparece no histórico do paciente`}>
+        <button className="btn btn--primario btn--pequeno" disabled={imprimindo} onClick={imprimir}>
+          <Icon name="file" size={16} /> {imprimindo ? 'Preparando…' : 'Imprimir ficha'}
+        </button>
+      </Cabecalho>
+      <FichaImpressa s={s} perfil={perfil} fotos={fotos} extra={extra} />
 
       <div className="p-kpis admin-kpis5">
         {[

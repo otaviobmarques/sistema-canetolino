@@ -2,7 +2,8 @@ import { motion } from 'framer-motion'
 import { num } from '../lib/datas'
 
 /** Gráfico de linha do peso (últimas N medições). SVG puro, animado ao aparecer. */
-export default function GraficoPeso({ pontos, altura = 150, ultimaSemana }: { pontos: number[]; altura?: number; ultimaSemana?: number }) {
+/** `estatico`: sem animação (impressão e PDF, onde a animação não roda). */
+export default function GraficoPeso({ pontos, altura = 150, ultimaSemana, estatico = false }: { pontos: number[]; altura?: number; ultimaSemana?: number; estatico?: boolean }) {
   if (pontos.length < 2)
     return (
       <div className="grafico-vazio">
@@ -31,7 +32,7 @@ export default function GraficoPeso({ pontos, altura = 150, ultimaSemana }: { po
         </linearGradient>
       </defs>
       <line x1={px} x2={W - px} y1={H - pyBot} y2={H - pyBot} stroke="#ece6fa" strokeWidth="1.5" />
-      <motion.path d={area} fill="url(#areaPeso)" initial={{ opacity: 0 }} whileInView={{ opacity: 1 }} viewport={{ once: true }} transition={{ delay: 0.6, duration: 0.8 }} />
+      <motion.path d={area} fill="url(#areaPeso)" initial={estatico ? false : { opacity: 0 }} whileInView={{ opacity: 1 }} viewport={{ once: true }} transition={{ delay: 0.6, duration: 0.8 }} />
       <motion.path
         d={d}
         fill="none"
@@ -39,14 +40,14 @@ export default function GraficoPeso({ pontos, altura = 150, ultimaSemana }: { po
         strokeWidth="3.5"
         strokeLinecap="round"
         strokeLinejoin="round"
-        initial={{ pathLength: 0 }}
+        initial={estatico ? false : { pathLength: 0 }}
         whileInView={{ pathLength: 1 }}
         viewport={{ once: true }}
         transition={{ duration: 1.4, ease: [0.22, 1, 0.36, 1] }}
       />
       {xy.map(([x, y], i) => (
         <motion.circle key={i} cx={x} cy={y} r={i === xy.length - 1 ? 6 : 3.2} fill={i === xy.length - 1 ? '#3B1A6E' : '#9370E0'} stroke="#fff" strokeWidth="2"
-          initial={{ scale: 0 }} whileInView={{ scale: 1 }} viewport={{ once: true }} transition={{ delay: 0.2 + i * 0.12, type: 'spring', stiffness: 400 }} style={{ transformOrigin: `${x}px ${y}px` }} />
+          initial={estatico ? false : { scale: 0 }} whileInView={{ scale: 1 }} viewport={{ once: true }} transition={{ delay: 0.2 + i * 0.12, type: 'spring', stiffness: 400 }} style={{ transformOrigin: `${x}px ${y}px` }} />
       ))}
       <text x={x0} y={y0 - 10} fontSize="12" fontWeight="700" fill="#5E5873" textAnchor="start">{num(pontos[0])}</text>
       <text x={x1} y={y1 - 12} fontSize="12.5" fontWeight="800" fill="#3B1A6E" textAnchor="end">{num(pontos[pontos.length - 1])}</text>

@@ -617,7 +617,7 @@ export function Perfil() {
       <BotaoInstalar className="btn btn--lilas btn--bloco" style={{ marginTop: 10 }} texto="Instalar o Canetolino neste aparelho" />
 
       <h2 className="secao-titulo">Minha ficha</h2>
-      <p className="legenda" style={{ marginTop: -4 }}>Tudo o que você registrou, organizado para imprimir ou salvar em PDF.</p>
+      <p className="legenda" style={{ marginTop: -4 }}>Tudo o que você registrou, num PDF para imprimir, salvar ou enviar ao seu médico.</p>
       <BotaoMinhaFicha className="btn btn--primario btn--bloco" style={{ marginTop: 8 }} />
 
       <h2 className="secao-titulo">Privacidade</h2>

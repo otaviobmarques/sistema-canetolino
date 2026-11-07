@@ -6,6 +6,7 @@ import GraficoPeso from '../components/GraficoPeso'
 import Icon from '../components/Icon'
 import Mascot from '../components/Mascot'
 import FichaImpressa, { imprimirFicha } from './FichaImpressa'
+import { baixarFicha } from './relatorio'
 import { lerSaude } from '../data/nuvem'
 import { calcularImc, LOCAL_LONGO, numerarAplicacoes, TIPOS_MEDIDA, vazio, type Estado } from '../data/store'
 import { dataBR, dataHoraBR, DIAS_LONGOS, num } from '../lib/datas'
@@ -40,6 +41,7 @@ export default function AdminPaciente({ c }: { c: SupabaseClient }) {
   const [erro, setErro] = useState('')
   const registrado = useRef('')
   const [imprimindo, setImprimindo] = useState(false)
+  const [baixando, setBaixando] = useState(false)
 
   useEffect(() => {
     let vivo = true
@@ -103,6 +105,9 @@ export default function AdminPaciente({ c }: { c: SupabaseClient }) {
     <>
       <Link to="/admin/usuarios" className="p-voltar">← Usuários</Link>
       <Cabecalho titulo={p('nome')} sub={`${p('email')} · plano ${perfil.plano === 'premium' ? 'Premium' : 'Básico'} · este acesso aparece no histórico do paciente`}>
+        <button className="btn btn--contorno btn--pequeno" disabled={baixando} onClick={async () => { setBaixando(true); try { await baixarFicha(c, id, String(perfil?.nome ?? 'paciente')) } catch (e) { setErro(erroPt(e)) } finally { setBaixando(false) } }}>
+          <Icon name="download" size={16} /> {baixando ? 'Gerando PDF…' : 'Baixar PDF'}
+        </button>
         <button className="btn btn--primario btn--pequeno" disabled={imprimindo} onClick={imprimir}>
           <Icon name="file" size={16} /> {imprimindo ? 'Preparando…' : 'Imprimir ficha'}
         </button>

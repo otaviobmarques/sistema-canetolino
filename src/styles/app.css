@@ -300,3 +300,9 @@ label.btn.is-ocupado { opacity: .6; pointer-events: none; }
 .plano-card .lista-premium li { align-items: flex-start; font-weight: 500; }
 .plano-card .lista-premium svg { flex: none; margin-top: 3px; }
 .chip.escala { font-size: 20px; min-height: 48px; }
+
+/* assinatura Domma Tecnologia */
+.assinatura-domma { display: flex; flex-direction: column; align-items: center; gap: 8px; margin: 26px 0 4px; color: var(--texto-2); font-size: 12px; }
+.assinatura-domma img { height: 26px; width: auto; display: block; }
+.assinatura-domma--lateral { flex-direction: row; justify-content: flex-start; margin: 4px 0 0; gap: 10px; }
+.assinatura-domma--lateral img { height: 22px; }

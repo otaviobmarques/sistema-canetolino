@@ -1,6 +1,7 @@
 import { AnimatePresence, motion } from 'framer-motion'
 import { Link, NavLink, Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import Icon from '../components/Icon'
+import Domma from '../components/Domma'
 import Mascot from '../components/Mascot'
 import { Logo } from '../components/ui'
 import { useStore } from '../data/store'
@@ -56,6 +57,7 @@ export default function AppShell() {
           <Mascot expressao="piscando" size={70} />
           <p>Para o seu nutricionista acompanhar, peça o código dele e autorize em Perfil → Compartilhar. Você revoga quando quiser.</p>
         </div>
+        <Domma className="assinatura-domma--lateral" />
       </aside>
 
       <div className="celular">

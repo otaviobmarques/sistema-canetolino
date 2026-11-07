@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import GraficoPeso from '../components/GraficoPeso'
 import Icon from '../components/Icon'
+import Domma from '../components/Domma'
 import Mascot from '../components/Mascot'
 import { Anel, Interruptor, Modal, soltarConfete, useToast } from '../components/ui'
 import {
@@ -610,6 +611,8 @@ export function Perfil() {
         <button onClick={async () => { await sair(); nav('/app/boas-vindas') }}>Sair</button>
         <button className="texto-alerta" onClick={() => setExcluir(true)}>Excluir minha conta</button>
       </Cartao>
+
+      <Domma />
 
       <Modal aberto={!!revogar} onFechar={() => setRevogar(null)}>
         <h3>Revogar acesso?</h3>

@@ -6,7 +6,7 @@ import Mascot from '../components/Mascot'
 import { Modal, soltarConfete, useToast } from '../components/ui'
 import { buscarAlimentos, CITACAO, itemDeAlimento, itemDeRotulo, mudarPorcao, type Alimento } from '../lib/alimentos'
 import { ErroIA, refeicaoPorFoto, refeicaoPorTexto, type ItemIA } from '../lib/ia'
-import { SINTOMAS, SINTOMAS_ALERTA, useStore, type AlimentoRotulo, type ItemRefeicao } from '../data/store'
+import { proteinaDoDia, SINTOMAS, SINTOMAS_ALERTA, useStore, type AlimentoRotulo, type ItemRefeicao } from '../data/store'
 import { diasEntre, ehHoje, horaBR, num, uid } from '../lib/datas'
 import { dataDaFoto } from '../lib/exif'
 import { paraData, paraHora } from './Doses'
@@ -252,7 +252,10 @@ export function Refeicao() {
       ],
     }))
     soltarConfete({ x: e.clientX, y: e.clientY }, 50)
-    toast(`Refeição salva: ${Math.round(total)} g de proteína`)
+    const antes = proteinaDoDia(s)
+    const meta = s.perfil.meta_proteina_g
+    if (ehHoje(hora.toISOString()) && antes < meta && antes + total >= meta) toast('Meta de proteína batida! O Dose está orgulhoso 🎉')
+    else toast(`Refeição salva: ${Math.round(total)} g de proteína`)
     nav('/app/home')
   }
 
@@ -618,7 +621,7 @@ export function SintomaTela() {
 /* ======================= Treino ======================= */
 export function Treino() {
   const nav = useNavigate()
-  const { set } = useStore()
+  const { s, set } = useStore()
   const toast = useToast()
   const [tipo, setTipo] = useState('Musculação')
   const [min, setMin] = useState(40)
@@ -648,7 +651,12 @@ export function Treino() {
           onClick={(e) => {
             set((x) => ({ ...x, treinos: [...x.treinos, { id: uid(), em: new Date().toISOString(), tipo, duracao_min: min, forca }] }))
             soltarConfete({ x: e.clientX, y: e.clientY }, 40)
-            toast('Treino registrado 💪')
+            const meta = s.config.metaTreinosSemana ?? 3
+            const seg = new Date()
+            seg.setHours(0, 0, 0, 0)
+            seg.setDate(seg.getDate() - ((seg.getDay() + 6) % 7))
+            const naSemana = s.treinos.filter((x) => new Date(x.em) >= seg).length
+            toast(naSemana + 1 === meta ? `Meta da semana batida: ${meta} ${meta === 1 ? 'treino' : 'treinos'}! 🎉` : 'Treino registrado 💪')
             nav('/app/home')
           }}
         >

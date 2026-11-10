@@ -1,7 +1,7 @@
 import { useEffect } from 'react'
 import { Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 import AppShell from './app/AppShell'
-import { ToastProvider, useToast } from './components/ui'
+import { soltarConfete, ToastProvider, useToast } from './components/ui'
 import { erroPt, sb, type Area } from './lib/supabase'
 import { StoreProvider } from './data/store'
 import Landing from './site/Landing'
@@ -51,12 +51,32 @@ function RetornoEmail() {
   return null
 }
 
+/** Lembrete que chega com o app aberto: o Dose fala por um aviso na tela, sem notificação. */
+function AvisoDoDose() {
+  const nav = useNavigate()
+  const toast = useToast()
+  useEffect(() => {
+    if (!('serviceWorker' in navigator)) return
+    const on = (e: MessageEvent) => {
+      const d = e.data
+      if (d?.tipo !== 'lembrete' || !d.texto) return
+      if (d.comemoracao) soltarConfete()
+      const rota = String(d.url || '').replace(/^\/?#/, '')
+      toast(d.texto, d.comemoracao ? 'ok' : 'info', rota && rota !== '/app/home' ? { rotulo: 'Abrir', fn: () => nav(rota) } : undefined)
+    }
+    navigator.serviceWorker.addEventListener('message', on)
+    return () => navigator.serviceWorker.removeEventListener('message', on)
+  }, [nav, toast])
+  return null
+}
+
 export default function App() {
   return (
     <StoreProvider>
       <ToastProvider>
         <TituloPorRota />
         <RetornoEmail />
+        <AvisoDoDose />
         <Routes>
           <Route path="/" element={<Landing />} />
           <Route path="/app/*" element={<AppShell />} />

@@ -2,7 +2,7 @@
 // Roda a cada 15 minutos (pg_cron). Também atende: o teste pedido pela pessoa e os botões da notificação.
 // Regras para não ficar chato:
 //  - cada tipo (água, refeição, treino, aplicação) pode ser desligado no Perfil;
-//  - só avisa se a pessoa ainda não registrou;
+//  - dois casos: sem nenhum registro, ou com registro mas a meta ainda não batida; meta batida = só comemoração;
 //  - no máximo 2 lembretes por dia (água, refeição e treino), fora o da aplicação e as comemorações;
 //  - horário de silêncio (padrão 22h às 8h);
 //  - lembrete ignorado 3 dias seguidos: o Dose passa a lembrar menos e pergunta se a pessoa quer manter;
@@ -25,6 +25,7 @@ type Config = {
   lembretesAgua?: boolean
   lembretes?: Partial<Record<'agua' | 'refeicao' | 'treino' | 'aplicacao', boolean>>
   silencio?: { inicio?: string; fim?: string }
+  metaTreinosSemana?: number
 }
 
 const LIMITE_DIA = 2
@@ -36,13 +37,18 @@ const IMAGEM: Partial<Record<Tipo, string>> = {
 }
 
 /* Mensagens: curtas, gentis, sem culpa, sem peso nem remédio. Uma por dia, variando. */
-const MSG: Record<'agua' | 'agua_tarde' | 'refeicao' | 'treino' | 'vespera' | 'comemoracao', string[]> = {
-  agua: ['Bora um gole juntos? 💧', 'Meio-dia chegou e a garrafinha está esperando 💧', 'Um copo d’água agora cai bem. Vamos?', 'Pausa rápida: um gole e seguimos 💧'],
-  agua_tarde: ['Que tal mais um copo d’água? 💧', 'Seu corpo agradece um gole agora 💧', 'Lembrete carinhoso: água por perto? 💧'],
-  refeicao: ['O que teve no prato hoje? Uma foto rapidinha resolve.', 'Me conta do almoço? Uma foto já basta 📸', 'Bateu a fome? Quando comer, registra comigo rapidinho.'],
-  treino: ['Que tal uma caminhada leve hoje?', 'Dez minutinhos de movimento já fazem bem. Bora?', 'Uma alongada ou uma volta no quarteirão? Eu vou junto.'],
+// dois casos: sem nenhum registro ainda, ou com registro mas a meta ainda não batida
+const MSG = {
+  agua: ['O Dose tá com sede! Bora o primeiro copo? 💧', 'Bora um gole juntos? 💧', 'Um copo d’água agora cai bem. Vamos? 💧'],
+  agua_falta: ['Falta pouco! Mais um copo e a meta é sua 💧', 'Já está no caminho! Mais uns goles e a meta de água é sua 💧', 'Bom ritmo na água! Bora mais um copo? 💧'],
+  refeicao: ['Já almoçou? Registra aí pra gente acompanhar sua proteína.', 'O que teve no prato hoje? Uma foto rapidinha resolve 📸', 'Me conta do almoço? Uma foto já basta 📸'],
+  refeicao_falta: ['Quase lá na proteína. Bora bater a meta? 💪', 'Falta pouquinho de proteína hoje. Um lanche caprichado resolve 💪', 'Sua proteína está quase lá! Bora fechar o dia na meta? 💪'],
+  treino: ['Bora se mexer? Uma caminhada já conta 🚶', 'Dez minutinhos de movimento já fazem bem. Bora?', 'Uma alongada ou uma volta no quarteirão? Eu vou junto.'],
+  treino_falta: ['Falta pouco para a meta da semana. Bora? 💪', 'Mais um treino e a semana fecha na meta! Bora?', 'Você está perto da meta de treinos da semana. Vamos juntos?'],
   vespera: ['Amanhã é dia da sua aplicação. Estou com você 💜', 'Lembrete amigo: amanhã é o seu dia de aplicação 💜', 'Amanhã tem aplicação. Já deixa tudo pronto, sem pressa 💜'],
   comemoracao: ['Meta de água batida! Arrasou 🎉', 'Água em dia hoje! Que orgulho 💧🎉', 'Você bateu a meta de água! Bora manter 🎉'],
+  comemoracao_proteina: ['Meta de proteína batida! Arrasou 💪🎉', 'Proteína em dia hoje! Que orgulho 🎉', 'Você bateu a meta de proteína! 💪'],
+  comemoracao_treino: ['Meta de treinos da semana batida! Arrasou 🎉', 'Semana na meta de treinos! Que orgulho 💪🎉', 'Você fechou a meta de treinos da semana! 🎉'],
 }
 const NOME_TIPO: Record<'agua' | 'refeicao' | 'treino', string> = { agua: 'da água', refeicao: 'das refeições', treino: 'do movimento' }
 function escolher(lista: string[], semente: string) {
@@ -166,7 +172,7 @@ Deno.serve(async (req) => {
   const relatorio: Record<string, unknown>[] = []
 
   for (const [userId, aparelhos] of porUsuario) {
-    const { data: p } = await db.from('profiles').select('fuso, config, meta_agua_ml').eq('user_id', userId).maybeSingle()
+    const { data: p } = await db.from('profiles').select('fuso, config, meta_agua_ml, meta_proteina_g').eq('user_id', userId).maybeSingle()
     if (!p) continue
     const cfg = (p.config ?? {}) as Config
     const liga = { agua: cfg.lembretes?.agua ?? cfg.lembretesAgua !== false, refeicao: cfg.lembretes?.refeicao !== false, treino: cfg.lembretes?.treino !== false, aplicacao: cfg.lembretes?.aplicacao !== false }
@@ -221,22 +227,38 @@ Deno.serve(async (req) => {
       avisos.push({ tipo: t, conta: true, ...av })
     }
 
-    // 1) água: ao meio-dia sem nenhum copo; às 16h se ainda não chegou à metade da meta
-    if (liga.agua) {
+    // proteína do dia (para "quase lá" e comemoração)
+    const { data: refHoje } = await db.from('meals').select('id, horario').eq('user_id', userId).gte('horario', inicioHoje).lt('horario', fimHoje).lte('horario', base.toISOString())
+    const protHoje = refHoje?.length ? ((await db.from('meal_items').select('proteina_g').in('meal_id', refHoje.map((r) => r.id))).data ?? []).reduce((x, i) => x + Number(i.proteina_g), 0) : 0
+    const metaProt = p.meta_proteina_g ?? 100
+    // treinos da semana (segunda a domingo, no fuso da pessoa)
+    const segunda = diaMenos(agora.dia, (agora.dow + 6) % 7)
+    const { data: treinosSemana } = await db.from('workouts').select('registrado_em').eq('user_id', userId).gte('registrado_em', inicioDoDiaUtc(segunda, fuso).toISOString()).lte('registrado_em', base.toISOString())
+    const metaTreinos = Math.max(1, Math.min(7, Number(cfg.metaTreinosSemana) || 3))
+    const treinosFeitos = treinosSemana?.length ?? 0
+    const treinouHoje = (treinosSemana ?? []).some((t) => +new Date(t.registrado_em) >= +new Date(inicioHoje))
+
+    const botoesAgua = [{ action: 'copo', title: '+1 copo' }, { action: 'soneca', title: 'Lembrar mais tarde' }]
+    // 1) água: meio-dia sem nenhum copo; 16h com copo registrado mas sem a meta (ou ainda sem nenhum)
+    if (liga.agua && aguaTotal < meta) {
       if (naJanela(agora.minutos, 12 * 60) && aguaTotal === 0)
-        await companhia('agua', { chave: `agua:${agora.dia}:12`, titulo: 'Canetolino', texto: escolher(MSG.agua, agora.dia), url: '/#/app/home', acoes: [{ action: 'copo', title: '+1 copo' }, { action: 'soneca', title: 'Lembrar mais tarde' }] })
-      else if (naJanela(agora.minutos, 16 * 60) && aguaTotal < meta / 2)
-        await companhia('agua', { chave: `agua:${agora.dia}:16`, titulo: 'Canetolino', texto: escolher(MSG.agua_tarde, agora.dia), url: '/#/app/home', acoes: [{ action: 'copo', title: '+1 copo' }, { action: 'soneca', title: 'Lembrar mais tarde' }] })
+        await companhia('agua', { chave: `agua:${agora.dia}:12`, titulo: 'Canetolino', texto: escolher(MSG.agua, agora.dia), url: '/#/app/home', acoes: botoesAgua })
+      else if (naJanela(agora.minutos, 16 * 60))
+        await companhia('agua', { chave: `agua:${agora.dia}:16`, titulo: 'Canetolino', texto: escolher(aguaTotal ? MSG.agua_falta : MSG.agua, agora.dia), url: '/#/app/home', acoes: botoesAgua })
     }
-    // 2) refeição: depois do almoço, se nada foi registrado no dia
-    if (liga.refeicao && naJanela(agora.minutos, 14 * 60 + 30)) {
-      const { count } = await db.from('meals').select('id', { count: 'exact', head: true }).eq('user_id', userId).gte('horario', inicioHoje).lt('horario', fimHoje)
-      if (!count) await companhia('refeicao', { chave: `refeicao:${agora.dia}`, titulo: 'Canetolino', texto: escolher(MSG.refeicao, agora.dia), url: '/#/app/registrar/refeicao?modo=foto', acoes: [{ action: 'abrir', title: 'Registrar agora' }, { action: 'soneca', title: 'Lembrar mais tarde' }] })
+    // 2) alimentação: 14h30 sem nenhuma refeição; 17h30 com refeição mas a proteína ainda abaixo da meta
+    if (liga.refeicao && protHoje < metaProt) {
+      if (naJanela(agora.minutos, 14 * 60 + 30) && !refHoje?.length)
+        await companhia('refeicao', { chave: `refeicao:${agora.dia}:almoco`, titulo: 'Canetolino', texto: escolher(MSG.refeicao, agora.dia), url: '/#/app/registrar/refeicao?modo=foto', acoes: [{ action: 'abrir', title: 'Registrar agora' }, { action: 'soneca', title: 'Lembrar mais tarde' }] })
+      else if (naJanela(agora.minutos, 17 * 60 + 30) && refHoje?.length)
+        await companhia('refeicao', { chave: `refeicao:${agora.dia}:proteina`, titulo: 'Canetolino', texto: escolher(MSG.refeicao_falta, agora.dia), url: '/#/app/registrar/refeicao?modo=foto', acoes: [{ action: 'abrir', title: 'Registrar lanche' }, { action: 'soneca', title: 'Lembrar mais tarde' }] })
     }
-    // 3) treino: às 18h, depois de 3 dias sem nenhum registro de movimento
-    if (liga.treino && naJanela(agora.minutos, 18 * 60)) {
-      const { count } = await db.from('workouts').select('id', { count: 'exact', head: true }).eq('user_id', userId).gte('registrado_em', inicioDoDiaUtc(diaMenos(agora.dia, 2), fuso).toISOString())
-      if (!count) await companhia('treino', { chave: `treino:${agora.dia}`, titulo: 'Canetolino', texto: escolher(MSG.treino, agora.dia), url: '/#/app/registrar/treino', acoes: [{ action: 'abrir', title: 'Registrar treino' }, { action: 'soneca', title: 'Lembrar mais tarde' }] })
+    // 3) treino: às 18h. Sem treino há 3 dias: convite leve. Com treino na semana mas abaixo da meta: de quinta a domingo, se não treinou hoje
+    if (liga.treino && treinosFeitos < metaTreinos && !treinouHoje && naJanela(agora.minutos, 18 * 60)) {
+      const { count: recentes } = await db.from('workouts').select('id', { count: 'exact', head: true }).eq('user_id', userId).gte('registrado_em', inicioDoDiaUtc(diaMenos(agora.dia, 2), fuso).toISOString()).lte('registrado_em', base.toISOString())
+      const botoes = [{ action: 'abrir', title: 'Registrar treino' }, { action: 'soneca', title: 'Lembrar mais tarde' }]
+      if (!treinosFeitos && !recentes) await companhia('treino', { chave: `treino:${agora.dia}`, titulo: 'Canetolino', texto: escolher(MSG.treino, agora.dia), url: '/#/app/registrar/treino', acoes: botoes })
+      else if (treinosFeitos && [4, 5, 6, 0].includes(agora.dow)) await companhia('treino', { chave: `treino:${agora.dia}`, titulo: 'Canetolino', texto: escolher(MSG.treino_falta, agora.dia), url: '/#/app/registrar/treino', acoes: botoes })
     }
     // 4) aplicação: na véspera e no dia (não entram no limite; o do dia respeita o horário que a pessoa escolheu)
     if (liga.aplicacao) {
@@ -266,11 +288,19 @@ Deno.serve(async (req) => {
           avisos.push({ tipo: 'vespera', chave: `vespera:${agora.dia}`, titulo: 'Canetolino', texto: escolher(MSG.vespera, agora.dia), url: '/#/app/jornada' })
       }
     }
-    // 5) comemoração: meta de água batida (uma vez por dia, logo depois de bater)
-    if (liga.agua && aguaTotal >= meta && !calado && !(hojeLog ?? []).some((x) => x.tipo === 'comemoracao')) {
-      const ult = (aguaHoje ?? []).map((x) => +new Date(x.registrado_em)).sort((a, b) => b - a)[0]
-      if (ult && base.getTime() - ult >= 0 && base.getTime() - ult < 30 * 60000)
+    // 5) comemorações (fora do limite de lembretes): logo depois de bater a meta, uma vez por meta
+    const recente = (datas: string[]) => {
+      const ult = datas.map((x) => +new Date(x)).sort((a, b) => b - a)[0]
+      return !!ult && base.getTime() - ult >= 0 && base.getTime() - ult < 30 * 60000
+    }
+    const jaFoi = async (chave: string) => (hojeLog ?? []).some((x) => x.chave === chave) || !!(await db.from('reminder_log').select('chave').eq('user_id', userId).eq('chave', chave).maybeSingle()).data
+    if (!calado) {
+      if (liga.agua && aguaTotal >= meta && recente((aguaHoje ?? []).map((x) => x.registrado_em)) && !(await jaFoi(`comemoracao:${agora.dia}:agua`)))
         avisos.push({ tipo: 'comemoracao', chave: `comemoracao:${agora.dia}:agua`, titulo: 'Canetolino', texto: escolher(MSG.comemoracao, agora.dia), url: '/#/app/home' })
+      if (liga.refeicao && protHoje >= metaProt && recente((refHoje ?? []).map((x) => x.horario)) && !(await jaFoi(`comemoracao:${agora.dia}:proteina`)))
+        avisos.push({ tipo: 'comemoracao', chave: `comemoracao:${agora.dia}:proteina`, titulo: 'Canetolino', texto: escolher(MSG.comemoracao_proteina, agora.dia), url: '/#/app/home' })
+      if (liga.treino && treinosFeitos >= metaTreinos && recente((treinosSemana ?? []).map((x) => x.registrado_em)) && !(await jaFoi(`comemoracao:${segunda}:treino`)))
+        avisos.push({ tipo: 'comemoracao', chave: `comemoracao:${segunda}:treino`, titulo: 'Canetolino', texto: escolher(MSG.comemoracao_treino, agora.dia), url: '/#/app/radar' })
     }
     // 6) "lembrar mais tarde": reenvia o lembrete adiado (sem contar de novo no limite)
     const { data: sonecas } = await db.from('lembrete_soneca').select('*').eq('user_id', userId).eq('enviado', false).lte('enviar_em', base.toISOString())
@@ -278,7 +308,9 @@ Deno.serve(async (req) => {
       if (!simular) await db.from('lembrete_soneca').update({ enviado: true }).eq('id', z.id)
       if (calado) continue
       const t = z.tipo as 'agua' | 'refeicao' | 'treino'
-      const texto = t === 'agua' ? escolher(MSG.agua_tarde, `${agora.dia}${z.id}`) : t === 'refeicao' ? escolher(MSG.refeicao, `${agora.dia}${z.id}`) : escolher(MSG.treino, `${agora.dia}${z.id}`)
+      // se a meta foi batida enquanto o lembrete estava adiado, não manda mais
+      if ((t === 'agua' && aguaTotal >= meta) || (t === 'refeicao' && protHoje >= metaProt) || (t === 'treino' && (treinosFeitos >= metaTreinos || treinouHoje))) continue
+      const texto = t === 'agua' ? escolher(aguaTotal ? MSG.agua_falta : MSG.agua, `${agora.dia}${z.id}`) : t === 'refeicao' ? escolher(refHoje?.length ? MSG.refeicao_falta : MSG.refeicao, `${agora.dia}${z.id}`) : escolher(treinosFeitos ? MSG.treino_falta : MSG.treino, `${agora.dia}${z.id}`)
       avisos.push({ tipo: t, chave: `${t}:${agora.dia}:soneca${z.id}`, titulo: 'Canetolino', texto, url: t === 'agua' ? '/#/app/home' : t === 'refeicao' ? '/#/app/registrar/refeicao?modo=foto' : '/#/app/registrar/treino', acoes: t === 'agua' ? [{ action: 'copo', title: '+1 copo' }] : [{ action: 'abrir', title: 'Registrar agora' }] })
     }
 

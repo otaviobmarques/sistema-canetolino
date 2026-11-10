@@ -7,6 +7,7 @@ import { carregar, mapearShares, sincronizar } from './nuvem'
 import { apagarTodasAsFotos, enviarFotosDoAparelho } from '../lib/fotos'
 
 /* ============================ Tipos (espelham o modelo de dados do descritivo) ============================ */
+export type TipoLembrete = 'agua' | 'refeicao' | 'treino' | 'aplicacao'
 export type Origem = 'manual' | 'ia_estimativa' | 'integracao'
 export const LOCAIS = ['Abdômen esq.', 'Abdômen dir.', 'Coxa esq.', 'Coxa dir.', 'Braço esq.', 'Braço dir.'] as const
 export type Local = (typeof LOCAIS)[number]
@@ -106,7 +107,7 @@ export type Estado = {
   compartilhamentos: Compartilhamento[]
   consentimentos: Consentimento[]
   auditoria: Auditoria[]
-  config: { notificacoesDiscretas: boolean; ia: boolean; fotosLocal: boolean; lembreteHora: string; lembretesAgua: boolean; mostrarTotalPeso?: boolean }
+  config: { notificacoesDiscretas: boolean; ia: boolean; fotosLocal: boolean; lembreteHora: string; lembretesAgua: boolean; mostrarTotalPeso?: boolean; lembretes?: Partial<Record<TipoLembrete, boolean>>; silencio?: { inicio: string; fim: string }; metaTreinosSemana?: number }
 }
 
 /* ============================ Estados iniciais ============================ */
@@ -280,6 +281,7 @@ function gravar(k: string, v: unknown) {
     /* sem storage */
   }
 }
+const DIA_MS_STORE = 86400000
 const carregarLocal = (): Estado => ({ ...vazio(), ...(ler<Partial<Estado>>(CHAVE) ?? {}) })
 
 export type ProfissionalCodigo = { tipo: 'profissional' | 'clinica'; id: string; nome: string; profissao: string; registro: string; verificado: boolean; iniciais: string; pronome: 'ela' | 'ele' | 'ele(a)' }
@@ -447,6 +449,34 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     document.addEventListener('visibilitychange', on)
     return () => document.removeEventListener('visibilitychange', on)
   }, [recarregarShares])
+
+  /** Água registrada fora do app (botão "+1 copo" da notificação): traz do servidor o que ainda não está aqui. */
+  const recarregarAgua = useCallback(async () => {
+    const uid = atual.current.userId
+    if (!uid) return
+    const desde = new Date(Date.now() - 2 * DIA_MS_STORE).toISOString()
+    const { data, error } = await c.from('hydration_records').select('id, ml, registrado_em').eq('user_id', uid).gte('registrado_em', desde)
+    if (error || !data) return
+    const novos = (x: Estado) => data.filter((r) => !x.agua.some((a) => a.id === r.id)).map((r) => ({ id: r.id, ml: r.ml, em: r.registrado_em }))
+    if (salvo.current) {
+      const n = novos(salvo.current)
+      if (n.length) salvo.current = { ...salvo.current, agua: [...salvo.current.agua, ...n] }
+    }
+    setS((p) => {
+      const n = novos(p)
+      return n.length ? { ...p, agua: [...p.agua, ...n].sort((a, b) => a.em.localeCompare(b.em)) } : p
+    })
+  }, [c])
+  useEffect(() => {
+    const on = () => document.visibilityState === 'visible' && recarregarAgua().catch(() => {})
+    document.addEventListener('visibilitychange', on)
+    const msg = (e: MessageEvent) => e.data?.tipo === 'atualizar-agua' && recarregarAgua().catch(() => {})
+    navigator.serviceWorker?.addEventListener('message', msg)
+    return () => {
+      document.removeEventListener('visibilitychange', on)
+      navigator.serviceWorker?.removeEventListener('message', msg)
+    }
+  }, [recarregarAgua])
 
   /* ---------- ações ---------- */
   const set = useCallback((fn: (s: Estado) => Estado) => setS((prev) => fn(prev)), [])

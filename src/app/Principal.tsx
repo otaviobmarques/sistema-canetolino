@@ -4,7 +4,7 @@ import { CampoDose, HistoricoDoses, ModalDose } from './Doses'
 import { formatarDose } from '../lib/dose'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useEffect, useMemo, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import GraficoPeso from '../components/GraficoPeso'
 import Icon from '../components/Icon'
 import Domma from '../components/Domma'
@@ -30,6 +30,7 @@ import {
   ultimoPeso,
   useStore,
   type Local,
+  type TipoLembrete,
 } from '../data/store'
 import { PLANOS, precoBR } from '../data/planos'
 import { resumoSemanal } from '../lib/ia'
@@ -457,7 +458,7 @@ export function Radar() {
 }
 
 function CartaoLembretes() {
-  const { s, set } = useStore()
+  const { s } = useStore()
   const toast = useToast()
   const [sit, setSit] = useState<SituacaoLembretes | null>(null)
   const [ocupado, setOcupado] = useState(false)
@@ -465,7 +466,7 @@ function CartaoLembretes() {
     situacao().then(setSit).catch(() => setSit('sem-suporte'))
   }, [])
   const texto: Record<SituacaoLembretes, string> = {
-    ligado: 'Ligados neste aparelho. Você recebe o aviso do dia de aplicação, da água e da validade das canetas.',
+    ligado: 'Ligados neste aparelho. O Dose avisa a aplicação, a água, a alimentação e o treino, do jeito que você escolher abaixo.',
     desligado: 'Receba o aviso do dia de aplicação, da água e da validade das canetas, mesmo com o app fechado.',
     bloqueado: 'As notificações estão bloqueadas neste navegador. Libere nas configurações do site para receber os lembretes.',
     'precisa-instalar': 'No iPhone, os lembretes funcionam com o app na tela de início: toque em Compartilhar → Adicionar à Tela de Início e abra por lá.',
@@ -529,9 +530,105 @@ function CartaoLembretes() {
           )}
         </div>
       )}
+      <LembretesDoDose />
+    </div>
+  )
+}
+
+const TIPOS_LEMBRETE: { tipo: TipoLembrete; nome: string; quando: string }[] = [
+  { tipo: 'agua', nome: 'Água', quando: 'Ao meio-dia e às 16h, só se a meta de água não foi batida' },
+  { tipo: 'refeicao', nome: 'Alimentação', quando: 'Às 14h30 se não registrou o almoço, às 17h30 se falta proteína' },
+  { tipo: 'treino', nome: 'Treino', quando: 'Às 18h, só se ainda não treinou e falta para a meta da semana' },
+  { tipo: 'aplicacao', nome: 'Aplicação', quando: 'No dia da dose e na véspera, às 20h' },
+]
+const NOME_PERGUNTA: Record<string, string> = { agua: 'de água', refeicao: 'de alimentação', treino: 'de treino' }
+
+/** Tipos de lembrete, horário de silêncio, meta de treinos e a pergunta depois de 3 dias ignorados. */
+function LembretesDoDose() {
+  const { s, set } = useStore()
+  const toast = useToast()
+  const [params, setParams] = useSearchParams()
+  const [perguntas, setPerguntas] = useState<string[]>([])
+  const liga = (t: TipoLembrete) => (t === 'agua' ? s.config.lembretes?.agua ?? s.config.lembretesAgua !== false : s.config.lembretes?.[t] !== false)
+  const silencio = s.config.silencio ?? { inicio: '22:00', fim: '08:00' }
+  const meta = s.config.metaTreinosSemana ?? 3
+  const mudar = (c: Partial<typeof s.config>) => set((x) => ({ ...x, config: { ...x.config, ...c } }))
+  const ligar = (t: TipoLembrete, v: boolean) =>
+    set((x) => ({ ...x, config: { ...x.config, lembretes: { ...x.config.lembretes, [t]: v }, ...(t === 'agua' ? { lembretesAgua: v } : {}) } }))
+
+  useEffect(() => {
+    if (!s.userId) return
+    sb('app')
+      .from('lembrete_estado')
+      .select('tipo')
+      .eq('perguntar', true)
+      .then(({ data }) => setPerguntas((data ?? []).map((x) => x.tipo as string)))
+  }, [s.userId])
+  useEffect(() => {
+    if (params.get('lembretes')) document.getElementById('lembretes-dose')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }, [params])
+
+  const responder = async (tipo: string, escolha: 'manter' | 'menos' | 'desligar') => {
+    const { error } = await sb('app')
+      .from('lembrete_estado')
+      .update({ perguntar: false, ritmo: escolha === 'manter' ? 'normal' : 'reduzido', atualizado_em: new Date().toISOString() })
+      .eq('user_id', s.userId!)
+      .eq('tipo', tipo)
+    if (error) return toast(erroPt(error), 'info')
+    if (escolha === 'desligar') ligar(tipo as TipoLembrete, false)
+    setPerguntas((p) => p.filter((x) => x !== tipo))
+    if (params.get('lembretes')) setParams({}, { replace: true })
+    toast(escolha === 'manter' ? 'Combinado! Continuo te lembrando 💜' : escolha === 'menos' ? 'Combinado, vou lembrar menos vezes 💜' : 'Lembrete desligado. Pode religar quando quiser 💜')
+  }
+
+  return (
+    <div id="lembretes-dose">
+      {perguntas.map((t) => (
+        <div key={t} className="linha-config pergunta-lembrete" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 10 }}>
+          <div>
+            <b>Quer que eu continue?</b>
+            <span>Percebi que os lembretes {NOME_PERGUNTA[t] ?? ''} não estão ajudando. Como prefere?</span>
+          </div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <button className="btn btn--primario btn--pequeno" style={{ flex: 1 }} onClick={() => responder(t, 'manter')}>Manter</button>
+            <button className="btn btn--lilas btn--pequeno" style={{ flex: 1 }} onClick={() => responder(t, 'menos')}>Menos vezes</button>
+            <button className="btn btn--contorno btn--pequeno" style={{ flex: 1 }} onClick={() => responder(t, 'desligar')}>Desligar</button>
+          </div>
+        </div>
+      ))}
       <div className="linha-config">
-        <div><b>Lembretes de água</b><span>Às 10h, 14h e 18h, se a meta ainda não foi batida</span></div>
-        <Interruptor ligado={s.config.lembretesAgua} onChange={(v) => set((x) => ({ ...x, config: { ...x.config, lembretesAgua: v } }))} rotulo="Lembretes de água" />
+        <div><b>Lembretes do Dose</b><span>No máximo 2 por dia, só quando falta registrar algo. Meta batida, só comemoração 🎉</span></div>
+      </div>
+      {TIPOS_LEMBRETE.map(({ tipo, nome, quando }) => (
+        <div key={tipo} className="linha-config">
+          <div><b>{nome}</b><span>{quando}</span></div>
+          <Interruptor ligado={liga(tipo)} onChange={(v) => ligar(tipo, v)} rotulo={`Lembretes de ${nome.toLowerCase()}`} />
+        </div>
+      ))}
+      {liga('treino') && (
+        <div className="linha-config" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 8 }}>
+          <div><b>Meta de treinos por semana</b><span>O Dose comemora quando você bate</span></div>
+          <div className="chips" role="radiogroup" aria-label="Treinos por semana">
+            {[1, 2, 3, 4, 5, 6, 7].map((n) => (
+              <button key={n} type="button" role="radio" aria-checked={meta === n} className={`chip ${meta === n ? 'is-on' : ''}`} onClick={() => mudar({ metaTreinosSemana: n })}>
+                {n}×
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+      <div className="linha-config" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 8 }}>
+        <div><b>Horário de silêncio</b><span>Nenhum lembrete nesse intervalo</span></div>
+        <div className="duas-col">
+          <div>
+            <label className="rotulo" htmlFor="sil-ini">Das</label>
+            <input id="sil-ini" className="campo" type="time" value={silencio.inicio} onChange={(e) => e.target.value && mudar({ silencio: { ...silencio, inicio: e.target.value } })} />
+          </div>
+          <div>
+            <label className="rotulo" htmlFor="sil-fim">Até</label>
+            <input id="sil-fim" className="campo" type="time" value={silencio.fim} onChange={(e) => e.target.value && mudar({ silencio: { ...silencio, fim: e.target.value } })} />
+          </div>
+        </div>
       </div>
     </div>
   )
